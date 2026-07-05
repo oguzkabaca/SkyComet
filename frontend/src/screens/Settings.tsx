@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
 import { Button } from '../components/Button';
-import { Card } from '../components/Card';
 import { Field } from '../components/Field';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { StatusLine } from '../components/StatusLine';
@@ -23,6 +22,7 @@ import {
 } from '../lib/ipc/commands';
 import { type Theme } from '../theme/ThemeContext';
 import { useTheme } from '../theme/useTheme';
+import { WorldMap } from '../viz/WorldMap';
 import styles from './Settings.module.css';
 
 type Status =
@@ -87,38 +87,55 @@ function FormStatus({ status }: { status: Status }) {
 
 export function Settings() {
   const [active, setActive] = useState<SectionId>('theme');
+  const [railOpen, setRailOpen] = useState(true);
   const section = SECTIONS.find((s) => s.id === active) ?? SECTIONS[0];
 
   return (
     <div className={styles.screen}>
-      <header className={styles.head}>
-        <h1 className={styles.title}>Settings</h1>
-        <p className={styles.sub}>Station configuration — appearance, location and operator hardware.</p>
-      </header>
+      <div className={railOpen ? styles.body : `${styles.body} ${styles.bodyRailHidden}`}>
+        <header className={styles.head}>
+          <button
+            type="button"
+            className={styles.railToggle}
+            title={railOpen ? 'Hide sections' : 'Show sections'}
+            aria-label={railOpen ? 'Hide sections' : 'Show sections'}
+            aria-expanded={railOpen}
+            onClick={() => setRailOpen((open) => !open)}
+          >
+            <svg viewBox="0 0 14 14" aria-hidden="true">
+              <rect x="1.5" y="2" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+              <line x1="5.5" y1="2" x2="5.5" y2="12" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          </button>
+          <div className={styles.headText}>
+            <h1 className={styles.title}>Settings</h1>
+            <p className={styles.sub}>Station configuration — appearance, location and operator hardware.</p>
+          </div>
+        </header>
 
-      <div className={styles.body}>
-        <nav className={styles.rail} aria-label="Settings sections">
-          {SECTIONS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={s.id === active ? `${styles.railItem} ${styles.railOn}` : styles.railItem}
-              aria-current={s.id === active ? 'true' : undefined}
-              onClick={() => setActive(s.id)}
-            >
-              {s.label}
-            </button>
-          ))}
-        </nav>
+        {railOpen && (
+          <nav className={styles.rail} aria-label="Settings sections">
+            {SECTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={s.id === active ? `${styles.railItem} ${styles.railOn}` : styles.railItem}
+                aria-current={s.id === active ? 'true' : undefined}
+                onClick={() => setActive(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </nav>
+        )}
 
         <div className={styles.content}>
-          <Card title={section.title}>
-            <p className={styles.sectionSub}>{section.sub}</p>
-            {active === 'theme' && <ThemeSection />}
-            {active === 'location' && <LocationForm />}
-            {active === 'profile' && <ProfileForm />}
-            {active === 'rotor' && <RotorForm />}
-          </Card>
+          <h2 className={styles.contentTitle}>{section.title}</h2>
+          <p className={styles.sectionSub}>{section.sub}</p>
+          {active === 'theme' && <ThemeSection />}
+          {active === 'location' && <LocationForm />}
+          {active === 'profile' && <ProfileForm />}
+          {active === 'rotor' && <RotorForm />}
         </div>
       </div>
     </div>
@@ -130,7 +147,10 @@ export function Settings() {
 const THEME_CHOICES: { value: Theme; name: string; desc: string }[] = [
   { value: 'calm', name: 'Calm', desc: 'Soft neutral light (default)' },
   { value: 'paper', name: 'Paper', desc: 'Warm cream light' },
+  { value: 'fog', name: 'Fog', desc: 'Cool blue-gray light' },
   { value: 'dark', name: 'Dark', desc: 'Low-light night ops' },
+  { value: 'midnight', name: 'Midnight', desc: 'Deep navy, cyan accent' },
+  { value: 'console', name: 'Console', desc: 'Green phosphor ops' },
 ];
 
 function ThemeSection() {
@@ -174,16 +194,14 @@ function ThemeSection() {
 type LocationMode = 'manual' | 'ip' | 'system';
 
 const MODE_HINT: Record<Exclude<LocationMode, 'manual'>, string> = {
-  ip: 'City-level accuracy from your public IP. Sends one request to ipwho.is; altitude must be entered by hand.',
-  system:
-    'Uses the Windows location service (Wi-Fi / GPS). If detection fails, allow location access in Windows Settings → Privacy & security → Location.',
+  ip: 'One request to ipwho.is — city-level accuracy, altitude by hand.',
+  system: 'Windows location service (Wi-Fi / GPS) — enable location access if this fails.',
 };
 
 function describeDetection(d: DetectedLocation): string {
   const place = d.label ?? `${d.latitude_deg.toFixed(4)}, ${d.longitude_deg.toFixed(4)}`;
-  const accuracy =
-    d.accuracy_m != null ? `±${Math.round(d.accuracy_m)} m` : 'city-level accuracy';
-  return `Detected: ${place} (${accuracy}). Review the fields, then save.`;
+  const accuracy = d.accuracy_m != null ? `±${Math.round(d.accuracy_m)} m` : 'city-level';
+  return `Detected: ${place} (${accuracy}). Review, then save.`;
 }
 
 function LocationForm() {
@@ -237,6 +255,21 @@ function LocationForm() {
     }
   }
 
+  // Live map marker: follows the (unsaved) field values so manual edits and
+  // detection results are visible before saving. Number('') is 0, so guard
+  // empty fields explicitly.
+  const mapLat = Number(latitude);
+  const mapLon = Number(longitude);
+  const observer =
+    latitude.trim() !== '' &&
+    longitude.trim() !== '' &&
+    Number.isFinite(mapLat) &&
+    Number.isFinite(mapLon) &&
+    Math.abs(mapLat) <= 90 &&
+    Math.abs(mapLon) <= 180
+      ? { latitudeDeg: mapLat, longitudeDeg: mapLon }
+      : null;
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const lat = Number(latitude);
@@ -260,38 +293,41 @@ function LocationForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className={styles.form}>
-      {/* Not a <Field>: that renders a <label>, and wrapping a button group in
-          a label misroutes label clicks to the first button. */}
-      <div className={styles.modeRow}>
-        <span className={styles.modeLabel}>Source</span>
-        <SegmentedControl<LocationMode>
-          ariaLabel="Location source"
-          options={[
-            { value: 'manual', label: 'Manual' },
-            { value: 'ip', label: 'Auto (IP)' },
-            { value: 'system', label: 'Wi-Fi / GPS' },
-          ]}
-          value={mode}
-          onChange={(next) => {
-            setMode(next);
-            setDetected(null);
-          }}
-        />
-      </div>
-
-      {mode !== 'manual' && (
-        <div className={styles.detectRow}>
-          <Button variant="secondary" type="button" onClick={handleDetect} disabled={detecting}>
-            {detecting ? 'Detecting…' : 'Detect location'}
-          </Button>
-          <span className={styles.detectHint}>{MODE_HINT[mode]}</span>
+    <form onSubmit={handleSubmit} className={styles.locationLayout}>
+      <div className={styles.locationFields}>
+        {/* Not a <Field>: that renders a <label>, and wrapping a button group in
+            a label misroutes label clicks to the first button. */}
+        <div className={styles.sourceBlock}>
+          <span className={styles.modeLabel}>Source</span>
+          <div className={styles.sourceRow}>
+            <SegmentedControl<LocationMode>
+              ariaLabel="Location source"
+              options={[
+                { value: 'manual', label: 'Manual' },
+                { value: 'ip', label: 'Auto (IP)' },
+                { value: 'system', label: 'GPS' },
+              ]}
+              value={mode}
+              onChange={(next) => {
+                setMode(next);
+                setDetected(null);
+              }}
+            />
+            {mode !== 'manual' && (
+              <Button variant="secondary" type="button" onClick={handleDetect} disabled={detecting}>
+                {detecting ? 'Detecting…' : 'Detect'}
+              </Button>
+            )}
+          </div>
+          {(detected || mode !== 'manual') && (
+            <p className={styles.sourceHint} role="status">
+              {detected
+                ? describeDetection(detected)
+                : MODE_HINT[mode as Exclude<LocationMode, 'manual'>]}
+            </p>
+          )}
         </div>
-      )}
 
-      {detected && <StatusLine>{describeDetection(detected)}</StatusLine>}
-
-      <div className={styles.grid}>
         <Field label="Latitude (°)">
           <input
             type="number"
@@ -319,13 +355,30 @@ function LocationForm() {
             required
           />
         </Field>
+
+        <div className={styles.actions}>
+          <Button variant="primary" type="submit" disabled={status.kind === 'loading'}>
+            Save
+          </Button>
+        </div>
+        <FormStatus status={status} />
       </div>
-      <div className={styles.actions}>
-        <Button variant="primary" type="submit" disabled={status.kind === 'loading'}>
-          Save
-        </Button>
+
+      <div className={styles.mapBox}>
+        <WorldMap
+          observer={observer}
+          interactive
+          onPick={(lat, lon) => {
+            setLatitude(lat.toFixed(4));
+            setLongitude(lon.toFixed(4));
+            setDetected(null);
+          }}
+        />
+        <p className={styles.mapHint}>
+          Click the map to set coordinates · scroll to zoom · drag to pan · double-click to
+          reset{observer ? ' — unsaved until you press Save.' : '.'}
+        </p>
       </div>
-      <FormStatus status={status} />
     </form>
   );
 }

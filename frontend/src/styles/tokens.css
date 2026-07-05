@@ -5,7 +5,9 @@
    Any color/spacing/radius/shadow revision touches only this file.
 
    :root        → Calm (default) — verbatim from the canonical mockup.
-   [paper]/[dark] → derived (the mockup is single-theme). Approved via M2–M8 screen QA.
+   [paper]/[fog]/[dark]/[midnight]/[console] → derived (the mockup is
+   single-theme). paper/dark approved via M2–M8 screen QA; fog/midnight/
+   console added in the settings-redesign sprint.
    ========================================================= */
 
 /* ---------- Calm (default) — canon ----------
@@ -81,6 +83,33 @@
   --danger:       oklch(0.54 0.13 27);
 }
 
+/* ---------- Fog — cool blue-gray light (derived) ---------- */
+[data-theme="fog"] {
+  --bg-page:      oklch(0.955 0.008 240);
+  --bg-shell:     oklch(0.975 0.006 240);
+  --bg-panel:     oklch(0.99 0.003 240);
+  --bg-panel-2:   oklch(0.975 0.006 240);
+  --bg-inset:     oklch(0.945 0.010 240);
+  --bg-hover:     oklch(0.935 0.012 240);
+
+  --border:       oklch(0.885 0.012 240);
+  --border-soft:  oklch(0.92 0.009 240);
+  --border-strong: oklch(0.80 0.016 240);
+
+  --fg:           oklch(0.24 0.018 250);
+  --fg-muted:     oklch(0.43 0.015 248);
+  --fg-dim:       oklch(0.55 0.012 246);
+  --fg-faint:     oklch(0.70 0.010 244);
+
+  --accent:       oklch(0.45 0.09 230);
+  --accent-soft:  oklch(0.91 0.035 230);
+  --accent-fg:    #ffffff;
+
+  --ok:           oklch(0.55 0.09 155);
+  --warn:         oklch(0.64 0.10 70);
+  --danger:       oklch(0.55 0.13 25);
+}
+
 /* ---------- Dark — night-ops (derived) ---------- */
 [data-theme="dark"] {
   --bg-page:      oklch(0.165 0.012 260);
@@ -104,6 +133,68 @@
   --accent-fg:    oklch(0.16 0.02 260);
 
   --ok:           oklch(0.70 0.13 155);
+  --warn:         oklch(0.78 0.13 75);
+  --danger:       oklch(0.66 0.16 25);
+
+  --sh-1: 0 1px 0 oklch(0 0 0 / .20), 0 1px 2px oklch(0 0 0 / .35);
+  --sh-2: 0 1px 0 oklch(0 0 0 / .20), 0 6px 14px oklch(0 0 0 / .45);
+  --sh-pop: 0 16px 38px oklch(0 0 0 / .55), 0 4px 10px oklch(0 0 0 / .40);
+}
+
+/* ---------- Midnight — deep navy, cyan accent (derived) ---------- */
+[data-theme="midnight"] {
+  --bg-page:      oklch(0.14 0.020 265);
+  --bg-shell:     oklch(0.17 0.020 265);
+  --bg-panel:     oklch(0.20 0.022 265);
+  --bg-panel-2:   oklch(0.18 0.021 265);
+  --bg-inset:     oklch(0.155 0.018 265);
+  --bg-hover:     oklch(0.235 0.024 262);
+
+  --border:       oklch(0.28 0.022 265);
+  --border-soft:  oklch(0.235 0.020 265);
+  --border-strong: oklch(0.38 0.026 262);
+
+  --fg:           oklch(0.94 0.010 250);
+  --fg-muted:     oklch(0.73 0.014 255);
+  --fg-dim:       oklch(0.59 0.014 258);
+  --fg-faint:     oklch(0.465 0.013 260);
+
+  --accent:       oklch(0.75 0.11 210);
+  --accent-soft:  oklch(0.30 0.055 220);
+  --accent-fg:    oklch(0.15 0.02 260);
+
+  --ok:           oklch(0.72 0.13 155);
+  --warn:         oklch(0.79 0.13 75);
+  --danger:       oklch(0.68 0.16 25);
+
+  --sh-1: 0 1px 0 oklch(0 0 0 / .25), 0 1px 2px oklch(0 0 0 / .40);
+  --sh-2: 0 1px 0 oklch(0 0 0 / .25), 0 6px 14px oklch(0 0 0 / .50);
+  --sh-pop: 0 16px 38px oklch(0 0 0 / .60), 0 4px 10px oklch(0 0 0 / .45);
+}
+
+/* ---------- Console — green phosphor ops (derived) ---------- */
+[data-theme="console"] {
+  --bg-page:      oklch(0.16 0.010 160);
+  --bg-shell:     oklch(0.19 0.011 160);
+  --bg-panel:     oklch(0.22 0.012 160);
+  --bg-panel-2:   oklch(0.20 0.011 160);
+  --bg-inset:     oklch(0.17 0.010 160);
+  --bg-hover:     oklch(0.25 0.014 158);
+
+  --border:       oklch(0.30 0.015 160);
+  --border-soft:  oklch(0.255 0.013 160);
+  --border-strong: oklch(0.40 0.018 158);
+
+  --fg:           oklch(0.92 0.020 150);
+  --fg-muted:     oklch(0.72 0.025 152);
+  --fg-dim:       oklch(0.58 0.025 154);
+  --fg-faint:     oklch(0.455 0.020 156);
+
+  --accent:       oklch(0.72 0.14 150);
+  --accent-soft:  oklch(0.30 0.06 152);
+  --accent-fg:    oklch(0.15 0.02 160);
+
+  --ok:           oklch(0.72 0.13 155);
   --warn:         oklch(0.78 0.13 75);
   --danger:       oklch(0.66 0.16 25);
 

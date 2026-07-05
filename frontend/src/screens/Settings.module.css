@@ -1,47 +1,97 @@
 .screen {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  max-width: 900px;
+  /* Cancel .main's 20px/24px padding so the panel spans the exact same
+     vertical range as the app Sidebar (both bounded by the shell's 14px). */
+  margin: -20px -24px;
+}
+
+/* --- one panel: header row + rail | content, vertical divider ------------- */
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+
+/* Rail hidden: the panel collapses to a single column. */
+.bodyRailHidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.railToggle {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.railToggle:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.railToggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.headText {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  min-width: 0;
 }
 
 .title {
   margin: 0;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 26px;
+  font-size: 20px;
   line-height: 1.1;
   color: var(--fg);
 }
 
 .sub {
   margin: 0;
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.5;
   color: var(--fg-dim);
-}
-
-/* --- section rail + content ---------------------------------------------- */
-
-.body {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
 }
 
 .rail {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  position: sticky;
-  top: 12px;
+  padding: 14px 10px;
+  background: var(--bg-panel-2);
+  border-right: 1px solid var(--border-soft);
 }
 
 .railItem {
@@ -73,6 +123,16 @@
 
 .content {
   min-width: 0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.contentTitle {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  color: var(--fg);
 }
 
 .sectionSub {
@@ -86,7 +146,7 @@
 
 .themeGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -184,13 +244,32 @@
   color: var(--fg-dim);
 }
 
-/* --- location detection ---------------------------------------------------- */
+/* --- location: fields left, map right -------------------------------------- */
 
-.modeRow {
+.locationLayout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.locationFields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sourceBlock {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  align-items: flex-start;
+}
+
+.sourceRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .modeLabel {
@@ -199,19 +278,22 @@
   letter-spacing: 0.2px;
 }
 
-.detectRow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.detectHint {
-  flex: 1;
-  min-width: 220px;
+.sourceHint {
+  margin: 0;
   font-size: 12px;
   line-height: 1.45;
   color: var(--fg-dim);
+}
+
+.mapBox {
+  width: 100%;
+  min-width: 0;
+}
+
+.mapHint {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--fg-faint);
 }
 
 /* --- shared form pieces ----------------------------------------------------- */

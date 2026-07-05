@@ -142,6 +142,9 @@ See [docs/04-conventions.md](docs/04-conventions.md).
 
 [MIT](LICENSE) © 2026 Oğuz Kabaca
 
+World map imagery: NASA Earth Observatory [Blue Marble](https://visibleearth.nasa.gov/collection/1484/blue-marble)
+(public domain).
+
 ---
 
 ## Contact

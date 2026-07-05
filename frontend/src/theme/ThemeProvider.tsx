@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ThemeContext, type Theme, type ThemeState } from './ThemeContext';
 
 const STORAGE_KEY = 'skycomet.theme';
-const THEMES: readonly Theme[] = ['calm', 'paper', 'dark'];
+const THEMES: readonly Theme[] = ['calm', 'paper', 'fog', 'dark', 'midnight', 'console'];
 
 function readStoredTheme(): Theme {
   const stored = localStorage.getItem(STORAGE_KEY);
