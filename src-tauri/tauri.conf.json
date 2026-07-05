@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.skycomet.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": {
+      "script": "npm run dev",
+      "cwd": "../frontend"
+    },
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm --prefix frontend run build",
     "frontendDist": "../frontend/dist"
