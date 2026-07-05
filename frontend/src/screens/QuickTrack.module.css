@@ -1,0 +1,10 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.readout {
+  display: flex;
+  flex-direction: column;
+}

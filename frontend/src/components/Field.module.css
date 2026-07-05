@@ -1,0 +1,36 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--fg-dim);
+  letter-spacing: 0.2px;
+}
+
+.field input,
+.field select {
+  height: 36px;
+  padding: 0 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  transition: border-color 120ms;
+}
+
+.field select {
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}

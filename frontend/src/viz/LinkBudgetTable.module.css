@@ -1,0 +1,97 @@
+/* Link budget table — token migration (M7).
+   MARGIN_OK_DB=6 + the marginClass threshold logic is UNCHANGED (LinkBudgetTable.tsx);
+   margin colors moved to tokens: positive→--ok / warn→--warn / negative→--danger. */
+.table {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+  max-width: 480px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.header {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.headLabel {
+  font-size: 10px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.headValue {
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.grid td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.grid tr:last-child td {
+  border-bottom: none;
+}
+
+.lbLabel {
+  color: var(--fg-dim);
+  width: 50%;
+}
+
+.lbValue {
+  text-align: right;
+  width: 35%;
+  color: var(--fg);
+}
+
+.lbUnit {
+  color: var(--fg-dim);
+  font-size: 11px;
+  width: 15%;
+  text-align: left;
+}
+
+.emphasis td {
+  font-weight: 600;
+  background: var(--accent-soft);
+}
+
+.marginPositive .lbValue {
+  color: var(--ok);
+}
+
+.marginWarn .lbValue {
+  color: var(--warn);
+}
+
+.marginNegative .lbValue {
+  color: var(--danger);
+}
+
+.footer {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--fg-dim);
+}

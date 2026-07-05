@@ -1,0 +1,25 @@
+.app {
+  height: 100%;
+  background: var(--bg-shell);
+  display: grid;
+  grid-template-rows: 44px 1fr;
+  overflow: hidden;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  min-height: 0;
+  padding: 14px;
+  gap: 14px;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 20px;
+  padding: 20px 24px;
+  overflow: auto;
+}

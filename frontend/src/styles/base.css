@@ -1,0 +1,71 @@
+/* =========================================================
+   Skycomet UI Shell v2 — Base surface
+   ADR 0008 (K3): the global layer is only tokens.css + base.css.
+   Reset + body/font surface. Component/screen styles live in
+   co-located CSS Modules (M2+).
+
+   Note: the canonical mockup's body `padding: 18px` + `overflow: hidden`
+   (floating rounded .app shell) belongs to the M2 custom-titlebar work;
+   not added in M1 — it would break the existing full-bleed .shell.
+   ========================================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar — token-based, consistent across all 3 themes (WebView2 Chromium
+   webkit + standard fallback). Otherwise the white OS scrollbar clashes in dark. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--r-pill);
+  border: 3px solid var(--bg-page);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-faint);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Hide the up/down arrow buttons — unstyled OS arrows looked clipped and
+   inconsistent against the thumb's pill radius (clean thin-scrollbar look). */
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}

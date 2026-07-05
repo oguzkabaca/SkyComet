@@ -1,0 +1,110 @@
+/* =========================================================
+   Skycomet UI Shell v2 — Design Tokens
+   Canon: docs/design/ui-shell-v2-calm.html · ADR 0008 (K1)
+   Theme = root <html data-theme="..."> + the override blocks in this file.
+   Any color/spacing/radius/shadow revision touches only this file.
+
+   :root        → Calm (default) — verbatim from the canonical mockup.
+   [paper]/[dark] → derived (the mockup is single-theme). Approved via M2–M8 screen QA.
+   ========================================================= */
+
+/* ---------- Calm (default) — canon ---------- */
+:root {
+  --bg-page:      oklch(0.965 0.004 90);
+  --bg-shell:     oklch(0.985 0.003 90);
+  --bg-panel:     #ffffff;
+  --bg-panel-2:   oklch(0.985 0.003 90);
+  --bg-inset:     oklch(0.96 0.004 90);
+  --bg-hover:     oklch(0.955 0.005 250);
+
+  --border:       oklch(0.90 0.006 250);
+  --border-soft:  oklch(0.935 0.005 250);
+  --border-strong: oklch(0.82 0.008 250);
+
+  --fg:           oklch(0.22 0.012 260);
+  --fg-muted:     oklch(0.42 0.010 260);
+  --fg-dim:       oklch(0.55 0.008 260);
+  --fg-faint:     oklch(0.70 0.006 260);
+
+  /* single muted accent — slate-navy */
+  --accent:       oklch(0.40 0.07 255);
+  --accent-soft:  oklch(0.93 0.025 255);
+  --accent-fg:    #ffffff;
+
+  /* status — desaturated, calm */
+  --ok:           oklch(0.55 0.09 155);
+  --warn:         oklch(0.65 0.10 70);
+  --danger:       oklch(0.55 0.13 25);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+
+  --sh-1: 0 1px 0 oklch(0 0 0 / .02), 0 1px 2px oklch(0 0 0 / .04);
+  --sh-2: 0 1px 0 oklch(0 0 0 / .02), 0 6px 14px oklch(0 0 0 / .06);
+  --sh-pop: 0 16px 38px oklch(0 0 0 / .08), 0 4px 10px oklch(0 0 0 / .05);
+
+  --font-ui:   "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Instrument Serif", "IBM Plex Sans", serif;
+}
+
+/* ---------- Paper — warm cream light (derived) ---------- */
+[data-theme="paper"] {
+  --bg-page:      oklch(0.955 0.012 85);
+  --bg-shell:     oklch(0.975 0.010 85);
+  --bg-panel:     oklch(0.992 0.007 85);
+  --bg-panel-2:   oklch(0.975 0.010 85);
+  --bg-inset:     oklch(0.945 0.014 84);
+  --bg-hover:     oklch(0.935 0.016 80);
+
+  --border:       oklch(0.88 0.014 80);
+  --border-soft:  oklch(0.915 0.011 82);
+  --border-strong: oklch(0.80 0.018 78);
+
+  --fg:           oklch(0.26 0.020 60);
+  --fg-muted:     oklch(0.44 0.017 62);
+  --fg-dim:       oklch(0.56 0.014 64);
+  --fg-faint:     oklch(0.70 0.012 66);
+
+  --accent:       oklch(0.42 0.075 250);
+  --accent-soft:  oklch(0.91 0.030 250);
+  --accent-fg:    #ffffff;
+
+  --ok:           oklch(0.54 0.09 155);
+  --warn:         oklch(0.64 0.10 70);
+  --danger:       oklch(0.54 0.13 27);
+}
+
+/* ---------- Dark — night-ops (derived) ---------- */
+[data-theme="dark"] {
+  --bg-page:      oklch(0.165 0.012 260);
+  --bg-shell:     oklch(0.195 0.012 260);
+  --bg-panel:     oklch(0.225 0.014 260);
+  --bg-panel-2:   oklch(0.205 0.013 260);
+  --bg-inset:     oklch(0.175 0.011 260);
+  --bg-hover:     oklch(0.255 0.016 255);
+
+  --border:       oklch(0.305 0.014 260);
+  --border-soft:  oklch(0.260 0.012 260);
+  --border-strong: oklch(0.405 0.016 258);
+
+  --fg:           oklch(0.93 0.008 250);
+  --fg-muted:     oklch(0.72 0.011 255);
+  --fg-dim:       oklch(0.585 0.011 258);
+  --fg-faint:     oklch(0.460 0.010 260);
+
+  --accent:       oklch(0.72 0.115 250);
+  --accent-soft:  oklch(0.305 0.055 255);
+  --accent-fg:    oklch(0.16 0.02 260);
+
+  --ok:           oklch(0.70 0.13 155);
+  --warn:         oklch(0.78 0.13 75);
+  --danger:       oklch(0.66 0.16 25);
+
+  --sh-1: 0 1px 0 oklch(0 0 0 / .20), 0 1px 2px oklch(0 0 0 / .35);
+  --sh-2: 0 1px 0 oklch(0 0 0 / .20), 0 6px 14px oklch(0 0 0 / .45);
+  --sh-pop: 0 16px 38px oklch(0 0 0 / .55), 0 4px 10px oklch(0 0 0 / .40);
+}

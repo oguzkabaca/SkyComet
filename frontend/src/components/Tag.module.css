@@ -1,0 +1,28 @@
+/* Pill tag — canon .tag (ui-shell-v2-calm.html). Calm neutral pill;
+   tone changes only the text color → token-safe across all 3 themes. */
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.accent {
+  color: var(--accent);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.danger {
+  color: var(--danger);
+}

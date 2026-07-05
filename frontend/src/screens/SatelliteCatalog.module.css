@@ -1,0 +1,202 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 16px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.search {
+  flex: 1 1 240px;
+  min-width: 200px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.meta {
+  color: var(--fg-dim);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(380px, 1fr) minmax(380px, 1.4fr);
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Card overflow:auto + border-radius clipped the scrollbar at the corner; Card
+   padding also left a gap above the sticky table header, letting rows bleed
+   through behind it. Fix: Card padding:0 + overflow:hidden (radius masks the
+   corner), scrolling moved to an inner wrapper (sticky th sits flush at top). */
+.listCard,
+.detailCard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.listScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.detailScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+
+/* --- list table --- */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px;
+  font-weight: 600;
+  color: var(--fg-dim);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+}
+
+.row {
+  cursor: pointer;
+}
+
+.row td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.rowOn,
+.rowOn:hover {
+  background: var(--accent-soft);
+}
+
+.badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.pageInfo {
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--fg-dim);
+  font-size: 13px;
+  padding: 16px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* --- detail panel --- */
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.detailName {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--fg);
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 4px 12px;
+  font-size: 13px;
+  margin: 0 0 16px 0;
+}
+
+.metaGrid dt {
+  color: var(--fg-dim);
+}
+
+.metaGrid dd {
+  margin: 0;
+  color: var(--fg);
+}
+
+.subhead {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin: 16px 0 8px 0;
+}
+
+.freqTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+
+.freqTable th,
+.freqTable td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border-soft);
+  text-align: left;
+}
+
+.freqTable th {
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
+.freqInactive td {
+  color: var(--fg-dim);
+}

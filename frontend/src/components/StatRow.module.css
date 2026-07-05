@@ -1,0 +1,28 @@
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 2px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.label {
+  font-size: 12px;
+  color: var(--fg-dim);
+  letter-spacing: 0.2px;
+}
+
+.value {
+  color: var(--fg);
+  font-size: 13px;
+  text-align: right;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

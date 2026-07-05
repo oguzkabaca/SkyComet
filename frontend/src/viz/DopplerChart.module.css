@@ -1,0 +1,35 @@
+/* Doppler curve chart — token migration (M7).
+   Geometry (xPx/yPx/roundedScaleKHz 1/5 kHz auto-scale) is UNCHANGED;
+   only color/stroke/font moved to tokens → token-safe across all 3 themes. */
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 640px;
+  background: var(--bg-inset);
+  border-radius: var(--r-md);
+}
+
+.axisLabel {
+  fill: var(--fg-dim);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.label {
+  fill: var(--fg-dim);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.peakPos {
+  fill: var(--ok);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.peakNeg {
+  fill: var(--danger);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}

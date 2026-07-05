@@ -1,0 +1,103 @@
+# ===== Rust / Cargo =====
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Tauri build output
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+
+# Tauri icon source placeholder (updated when a real icon lands)
+src-tauri/icons/icon-source.png
+
+# ===== Node / Frontend =====
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/coverage/
+*.local
+
+# Lock files are kept:
+# - Cargo.lock IS committed (application binary)
+# - package-lock.json IS committed (reproducible builds)
+
+# ===== Development output =====
+# Local database and logs produced during development.
+# The production DB lives under Tauri app_data_dir, outside the repo.
+dev-data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+logs/
+*.log
+
+# ===== Tauri signing =====
+# Private keys are never committed.
+*.key
+*.pem
+.tauri/
+
+# ===== IDE / Editor =====
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== OS / Temporary =====
+*.tmp
+*.bak
+*.orig
+.cache/
+
+# ===== Environment variables =====
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ===== Test / Coverage =====
+coverage/
+*.profraw
+*.profdata
+tarpaulin-report.html
+
+# ===== Legacy pitfalls (kept as guard rails) =====
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.claude/
+
+# ===== Internal development notes (local only, never pushed) =====
+AGENTS.md
+CLAUDE.md
+CURRENT.md
+JOURNAL.md
+CALISMA_GUNLUGU.md
+.sessions/
+agent-profiles/
+knowledge/
+docs/agents/
+docs/05-workflow.md
+docs/06-reporting.md
+docs/08-agent-handoff.md
+docs/backlog.md
+docs/reports/
+docs/archive/
+docs/decisions/0003-agent-memory-architecture.md
+docs/decisions/0007-multi-agent-conductor.md
+obsidian-vault/
+.obsidian/

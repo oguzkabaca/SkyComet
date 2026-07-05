@@ -1,0 +1,122 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 720px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--fg);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Risk card — color mapping (calc §9): quiet→--ok, moderate→--warn,
+   strong→--danger, unknown→neutral. border-left + code color follow the level. */
+.riskCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  box-shadow: var(--sh-1);
+}
+
+.code {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.riskLabel {
+  font-size: 16px;
+  color: var(--fg-muted);
+}
+
+.stalePush {
+  margin-left: auto;
+}
+
+.levelQuiet {
+  border-left-color: var(--ok);
+}
+.levelQuiet .code {
+  color: var(--ok);
+}
+
+.levelModerate {
+  border-left-color: var(--warn);
+}
+.levelModerate .code {
+  color: var(--warn);
+}
+
+.levelStrong {
+  border-left-color: var(--danger);
+}
+.levelStrong .code {
+  color: var(--danger);
+}
+
+.levelUnknown {
+  border-left-color: var(--border-strong);
+}
+.levelUnknown .code {
+  color: var(--fg-muted);
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+
+.detailGrid div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detailGrid dt {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.detailGrid dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.footnote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+}

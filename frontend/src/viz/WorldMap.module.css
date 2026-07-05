@@ -1,0 +1,72 @@
+/* WorldMap — equirectangular ground track (canon docs/calculations.md §7.4).
+   The project() geometry MUST NOT change; only color/stroke moved to tokens (M6).
+   Light palette: ocean/grid/track/observer token-safe across all 3 themes. */
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.ocean {
+  fill: var(--bg-inset);
+}
+
+.grid {
+  stroke: var(--border);
+  stroke-width: 0.5;
+}
+
+.equator {
+  stroke: var(--accent);
+  stroke-width: 0.8;
+  stroke-dasharray: 4 3;
+  opacity: 0.7;
+}
+
+.tropic {
+  stroke: var(--border-soft);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 4;
+}
+
+.frame {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.track {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.observer {
+  fill: var(--ok);
+}
+
+.observerRing {
+  fill: none;
+  stroke: var(--ok);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.subpoint {
+  fill: var(--warn);
+  stroke: var(--bg-panel);
+  stroke-width: 1;
+}
+
+.label {
+  fill: var(--fg-faint);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}

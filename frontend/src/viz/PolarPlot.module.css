@@ -1,0 +1,23 @@
+.plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 300px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  background: var(--bg-inset);
+  border-radius: var(--r-md);
+}
+
+.label {
+  fill: var(--fg-dim);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+}
+
+.elev {
+  fill: var(--fg-faint);
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
