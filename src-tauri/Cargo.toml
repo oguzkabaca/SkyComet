@@ -29,6 +29,11 @@ sgp4 = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"] }
 serialport = "4"
 
+[target.'cfg(windows)'.dependencies]
+# System location detection (ADR 0012 D2). 0.61 matches the line already pulled
+# in by Tauri, so no duplicate `windows` build is introduced.
+windows = { version = "0.61", features = ["Devices_Geolocation", "Foundation"] }
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1.40", features = ["macros", "rt"] }

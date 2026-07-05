@@ -3,6 +3,9 @@ use thiserror::Error;
 
 use super::db::{Database, DbError};
 
+pub mod detect;
+pub mod system;
+
 const LOCATION_KEY: &str = "location";
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

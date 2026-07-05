@@ -69,6 +69,7 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 | F7 | Space weather risk label (Kp/G-scale), stale threshold, telemetry liveness | §9 |
 | F8 | Generic rotor: quantization/deadband, peak angular rate + feasibility, overlap-aware az-wrap, flip, pre-position, brief score | §8 |
 | F9 | Serial transport constants (SerialRotor) | §8.9 |
+| Sprint 2026-07 (settings redesign) | Location detection network constants | §10 |
 
 ---
 
@@ -993,8 +994,35 @@ Continuity: at d=7 both branches give 0.8 (continuous). The score decreases mono
 
 ---
 
+## 10. Location detection — network constants
+
+Assisted location entry (ADR 0012). **User-initiated only** — the app never calls these on
+its own (offline-first); detection prefills the Settings form and saving stays manual.
+
+| Constant | Value | Where | Rationale |
+|---|---|---|---|
+| `IP_GEOLOCATION_URL` | `https://ipwho.is/` | `core/location/detect.rs` | HTTPS, no API key (ADR 0012 D1) |
+| `REQUEST_TIMEOUT` | 15 s | `core/location/detect.rs` | single small JSON lookup; generous for slow links |
+| `MAX_RESPONSE_BYTES` | 64 KiB | `core/location/detect.rs` | normal response ≈ 1 KB; guards a misbehaving endpoint |
+| `SYSTEM_LOCATION_TIMEOUT` | 20 s | `core/location/system.rs` | Wi-Fi positioning resolves in seconds; also bounds a cold GPS fix (the WinRT call has no own timeout) |
+
+Rules:
+
+- Coordinates from either source pass through the same `Location::new` range validation as
+  manual entry (lat ∈ [−90, 90], lon ∈ [−180, 180]) **before** being offered to the operator;
+  persistence always goes through `set_location`, so the save path validates again.
+- IP detection is city-level and never reports altitude → `altitude_m = None`.
+- The system source reports altitude only when the OS provides an altitude accuracy
+  (otherwise the raw field is a meaningless 0 and is dropped).
+
+**Status:** active (2026-07-05, settings-redesign sprint). `core/location/detect.rs` parser is
+fixture-tested (success / provider-reject / missing field / out-of-range / malformed).
+
+---
+
 ## Change history
 
+- 2026-07-05 — Settings redesign sprint: §10 added — location detection network constants (ipwho.is 15 s / 64 KiB, system fix 20 s) + validation rules (ADR 0012).
 - 2026-06-16 — F9: §8.9 added — serial transport constants (read timeout 500 ms / retry 3 / watchdog 5 s / baud canon).
 - 2026-06-06 — F8.0 (ADR 0010, generic rotor): §8 rewritten as parametric canon (8.1 parameters, 8.2 quantization/deadband/protocol scale, 8.3 peak angular rate + feasibility, 8.4 overlap-aware az-wrap, 8.5 flip, 8.6 pre-position, 8.7 brief score 0-100 + gates, 8.8 sanity); forward-spec constants named; G-5500 constants removed (axis-parametric).
 - 2026-05-28 — F7 risk line: §9 (9.1-9.5) added — space weather risk label (NOAA G-scale primary, Kp fallback), STALE_THRESHOLD_MINUTES=120, telemetry liveness score.

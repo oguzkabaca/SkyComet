@@ -28,6 +28,29 @@ export async function setLocation(input: Location): Promise<Location> {
   });
 }
 
+/** A detected (not yet saved) location — prefills the form for review (ADR 0012). */
+export interface DetectedLocation {
+  latitude_deg: number;
+  longitude_deg: number;
+  /** Null when the source cannot measure altitude (IP lookup never can). */
+  altitude_m: number | null;
+  /** Horizontal accuracy radius in meters, when the source reports one. */
+  accuracy_m: number | null;
+  source: string;
+  /** Human-readable place hint (e.g. "Istanbul, Turkey") when available. */
+  label: string | null;
+}
+
+/** Coarse (city-level) location from the public IP — one request to ipwho.is. */
+export async function detectLocationIp(): Promise<DetectedLocation> {
+  return invoke<DetectedLocation>('detect_location_ip');
+}
+
+/** Precise location from the OS positioning stack (Wi-Fi / GPS, Windows only). */
+export async function detectLocationSystem(): Promise<DetectedLocation> {
+  return invoke<DetectedLocation>('detect_location_system');
+}
+
 export async function listSatellites(): Promise<SatelliteSummary[]> {
   return invoke<SatelliteSummary[]>('list_satellites');
 }
