@@ -3,14 +3,10 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 
 import { findCrumbs, type ScreenId } from '../nav';
 import { useRealtime } from '../stores/useRealtime';
-import { type Theme } from '../theme/ThemeContext';
-import { useTheme } from '../theme/useTheme';
 import styles from './TitleBar.module.css';
 
 const IS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const appWindow = IS_TAURI ? getCurrentWindow() : null;
-
-const THEME_OPTIONS: Theme[] = ['calm', 'paper', 'dark'];
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -30,7 +26,6 @@ function useUtcClock(): string {
 }
 
 export function TitleBar({ active }: { active: ScreenId }) {
-  const { theme, setTheme } = useTheme();
   const { snapshot } = useRealtime();
   const utc = useUtcClock();
   const { group, leaf } = findCrumbs(active);
@@ -63,18 +58,6 @@ export function TitleBar({ active }: { active: ScreenId }) {
         <span className={styles.item}>
           <span className={styles.lbl}>UTC</span>
           <b>{utc}</b>
-        </span>
-        <span className={styles.themewell}>
-          {THEME_OPTIONS.map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              className={theme === opt ? styles.on : undefined}
-              onClick={() => setTheme(opt)}
-            >
-              {opt}
-            </button>
-          ))}
         </span>
       </div>
 

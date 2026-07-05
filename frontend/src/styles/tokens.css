@@ -8,8 +8,11 @@
    [paper]/[dark] → derived (the mockup is single-theme). Approved via M2–M8 screen QA.
    ========================================================= */
 
-/* ---------- Calm (default) — canon ---------- */
-:root {
+/* ---------- Calm (default) — canon ----------
+   Also matches [data-theme="calm"] so scoped previews (Settings theme cards)
+   render Calm correctly while another theme is active on the root. */
+:root,
+[data-theme='calm'] {
   --bg-page:      oklch(0.965 0.004 90);
   --bg-shell:     oklch(0.985 0.003 90);
   --bg-panel:     #ffffff;

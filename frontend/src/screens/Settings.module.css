@@ -1,3 +1,221 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 900px;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--fg);
+}
+
+.sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+}
+
+/* --- section rail + content ---------------------------------------------- */
+
+.body {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 12px;
+}
+
+.railItem {
+  display: block;
+  text-align: left;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--fg-dim);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.railItem:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.railOn {
+  background: var(--bg-inset);
+  color: var(--fg);
+  font-weight: 500;
+  border-left-color: var(--accent);
+}
+
+.content {
+  min-width: 0;
+}
+
+.sectionSub {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+}
+
+/* --- theme section --------------------------------------------------------- */
+
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.themeCard {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  text-align: left;
+  padding: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: border-color 120ms, box-shadow 120ms;
+}
+
+.themeCard:hover {
+  border-color: var(--border-strong);
+}
+
+.themeOn {
+  border-color: var(--accent);
+  box-shadow: var(--sh-1);
+}
+
+/* The preview carries its own data-theme, so every var() below resolves to
+   the previewed theme — not the active root theme. */
+.themePreview {
+  display: block;
+  height: 72px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-page);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.previewBar {
+  display: block;
+  height: 12px;
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.previewBody {
+  display: block;
+  padding: 9px;
+}
+
+.previewPanel {
+  display: block;
+  padding: 7px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.previewAccent {
+  display: block;
+  width: 24px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  margin-bottom: 6px;
+}
+
+.previewLine,
+.previewLineShort {
+  display: block;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--fg-faint);
+}
+
+.previewLine {
+  width: 80%;
+  margin-bottom: 4px;
+}
+
+.previewLineShort {
+  width: 55%;
+  background: var(--border-strong);
+}
+
+.themeName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.themeDesc {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+
+/* --- location detection ---------------------------------------------------- */
+
+.modeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.modeLabel {
+  font-size: 11px;
+  color: var(--fg-dim);
+  letter-spacing: 0.2px;
+}
+
+.detectRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.detectHint {
+  flex: 1;
+  min-width: 220px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-dim);
+}
+
+/* --- shared form pieces ----------------------------------------------------- */
+
 .form {
   display: flex;
   flex-direction: column;
