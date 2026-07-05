@@ -29,6 +29,7 @@
 }
 .name {
   font-family: var(--font-display);
+  font-weight: 600;
   font-size: 19px;
   letter-spacing: -0.2px;
   color: var(--fg);
