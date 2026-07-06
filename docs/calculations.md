@@ -71,6 +71,7 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 | F9 | Serial transport constants (SerialRotor) | §8.9 |
 | Sprint 2026-07 (settings redesign) | Location detection network constants | §10 |
 | Sprint 2026-07 (settings redesign) | Observer site geometry (horizon, GEO belt, grid locator) | §11 |
+| Sprint 2026-07 (Quick Track) | Live tracking snapshot enrichment (range-rate, altitude, pass phase) | §12 |
 
 ---
 
@@ -1099,8 +1100,73 @@ sub-metre ellipsoid detail that §4 needs). Constants:
 
 ---
 
+## 12. Quick Track — live tracking snapshot enrichment
+
+The live tracking loop emits one `TrackingSnapshot` per tick. Beyond az/el/range it carries a
+range-rate, a sub-point altitude and a pass phase so the operator screen can show Doppler and pass
+context from real data (ADR 0013). All three derive from data SGP4 already produces; no new
+propagation model is introduced. Code: `core/tracking.rs::snapshot_from_parts`.
+
+### 12.1 Live range rate
+
+- **Purpose:** instantaneous slant-range rate, feeding live Doppler (§6.2) and the pass phase (§12.3).
+- **Input:** slant range at `t ± Δt` (km).
+- **Output:** range rate (km/s).
+- **Formula:** central difference — `ṙ = (range(t+Δt) − range(t−Δt)) / (2·Δt)`.
+- **Constants/Parameters:** `RANGE_RATE_DT_SEC (Δt) = 1.0 s`.
+- **Sign:** `ṙ > 0` receding (range growing), `ṙ < 0` approaching — the **same convention as the §6.2
+  Doppler shift**, so live Doppler reuses `doppler_shift_hz` directly.
+- **Tolerance:** numeric differentiation; adequate for a display read-out (sub-Hz Doppler error at
+  UHF). Analytical SGP4 range-rate deferred (knowledge/orbit.md TODO), matching the §6 Doppler curve.
+- **Source:** finite-difference derivative; same method as §6 Doppler curve.
+- **Added:** Sprint 2026-07 (Quick Track). **Status:** active.
+
+### 12.2 Satellite altitude (sub-point)
+
+- **Purpose:** geodetic altitude of the sub-satellite point for the live read-out.
+- **Formula:** `altitude = ecef_to_geodetic(teme_to_ecef(r, t)).alt` — reuses §4 (TEME→ECEF) and the
+  §7.2 sub-point geodetic conversion; no new math.
+- **Output:** altitude above the WGS84 ellipsoid (km).
+- **Added:** Sprint 2026-07 (Quick Track). **Status:** active.
+
+### 12.3 Pass phase
+
+- **Purpose:** one-word pass context for the live read-out and the polar view.
+- **Formula:**
+  ```
+  if elevation < 0°        → BelowHorizon
+  else if range_rate < 0   → Approaching
+  else                     → Receding
+  ```
+- **Note:** at the culmination (TCA) `range_rate` crosses zero; the exact `≥ 0 → Receding` boundary
+  is a display convention, not a measurement.
+- **Added:** Sprint 2026-07 (Quick Track). **Status:** active.
+
+### 12.4 Live Doppler (derived, no new formula)
+
+Live Doppler is **not** a separate calculation: given §12.1 range-rate and the selected RF profile
+frequency, the UI uses the existing §6.2 `doppler_shift_hz` / `observed_frequency_hz`. Recorded here
+only to state that no second Doppler path exists (consumed by the RF & Doppler card, M5).
+
+### 12.5 Sanity (implemented — measured values)
+
+ISS (ZARYA), TLE epoch `2024-001.5`, observer Istanbul (41.0082°, 28.9784°, 35 m). Values are the
+invariants asserted by the `core/tracking.rs` unit tests (not a single fabricated reading):
+
+| Quantity | Instant | Asserted |
+|---|---|---|
+| Altitude (sub-point) | epoch | ∈ [150, 600] km (LEO band) |
+| Range-rate sign vs range trend | epoch + 5 min | agree (`ṙ > 0 ⇔ range(t+1s) > range(t−1s)`) |
+| Pass phase | epoch | consistent with elevation + range-rate sign |
+
+**Status:** active (Sprint 2026-07, Quick Track M1). Pure derivation in
+`core/tracking.rs::snapshot_from_parts`, unit-tested; emitted on the `tracking_update` event.
+
+---
+
 ## Change history
 
+- 2026-07-06 — Quick Track redesign (ADR 0013, M1): §12 added — live tracking snapshot enrichment: range-rate (central difference, Δt = 1 s, §6.2 sign convention), sub-point altitude (§4/§7.2 reuse), pass phase (elevation + range-rate sign). No new propagation model; live Doppler reuses §6.2.
 - 2026-07-06 — Settings sprint (Location screen redesign): §11 added — observer site geometry (horizon dip + range, GEO belt elevation + visibility limit ~81.3°, Maidenhead grid locator); constants R⊕ 6378.137 km, r_geo 42164 km. Pure `core/observer.rs`, exposed via `get_site_analysis`.
 - 2026-07-05 — Settings redesign sprint: §10 added — location detection network constants (ipwho.is 15 s / 64 KiB, system fix 20 s) + validation rules (ADR 0012).
 - 2026-06-16 — F9: §8.9 added — serial transport constants (read timeout 500 ms / retry 3 / watchdog 5 s / baud canon).

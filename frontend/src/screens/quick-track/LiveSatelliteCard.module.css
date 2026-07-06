@@ -8,6 +8,13 @@
   border-radius: var(--r-md);
 }
 
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .title {
   margin: 0;
   font-size: 11px;
@@ -15,6 +22,32 @@
   letter-spacing: 0.3px;
   text-transform: uppercase;
   color: var(--fg-dim);
+}
+
+.phase {
+  flex: none;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--fg-dim);
+}
+
+/* Approaching = active accent; receding = neutral; below horizon = muted. */
+.phase_approaching {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.phase_receding {
+  color: var(--fg-dim);
+  border-color: var(--border);
+}
+
+.phase_below_horizon {
+  color: var(--fg-faint);
+  border-color: var(--border-soft);
 }
 
 .heroRow {

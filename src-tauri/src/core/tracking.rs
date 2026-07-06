@@ -1,18 +1,35 @@
 use std::sync::{Arc, Mutex};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::db::{Database, DbError};
 use super::location::{self, Location, LocationError};
-use super::orbit::coordinates::teme_to_az_el;
+use super::orbit::coordinates::{ecef_to_geodetic, teme_to_az_el, teme_to_ecef};
 use super::orbit::sgp4_engine::Propagator;
 use super::orbit::OrbitError;
 use super::tle::cache::TleCache;
 use super::tle::TleError;
 
 const ACTIVE_NORAD_KEY: &str = "active_norad";
+
+/// Half-step for the live range-rate central difference (canon §12.1). The rate
+/// is `(range(t+Δt) − range(t−Δt)) / (2Δt)`; numeric differentiation reuses the
+/// method of the §6 Doppler curve (analytical SGP4 range-rate deferred).
+const RANGE_RATE_DT_SEC: f64 = 1.0;
+
+/// Where the satellite is in its pass, for the live read-out (canon §12.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PassPhase {
+    /// Above the horizon, closing in (range shrinking → range_rate < 0).
+    Approaching,
+    /// Above the horizon, moving away (range growing → range_rate ≥ 0).
+    Receding,
+    /// Below the horizon (elevation < 0).
+    BelowHorizon,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct TrackingState {
@@ -43,6 +60,12 @@ pub struct TrackingSnapshot {
     pub azimuth_deg: f64,
     pub elevation_deg: f64,
     pub range_km: f64,
+    /// Slant-range rate (km/s); > 0 receding, < 0 approaching (canon §6.2/§12.1).
+    pub range_rate_km_s: f64,
+    /// Sub-satellite point geodetic altitude (km) (canon §12.2).
+    pub altitude_km: f64,
+    /// Pass phase derived from elevation + range-rate sign (canon §12.3).
+    pub pass_phase: PassPhase,
     pub tle_age_hours: f64,
 }
 
@@ -109,12 +132,36 @@ fn snapshot_from_parts(
     let propagator = Propagator::from_tle(record)?;
     let state = propagator.propagate_at(now)?;
     let az_el = teme_to_az_el(state.position_km, now, observer)?;
+
+    // Sub-point altitude (canon §12.2) — reuse the ground-track geodetic path.
+    let (_, _, altitude_km) = ecef_to_geodetic(teme_to_ecef(state.position_km, now));
+
+    // Live range-rate via central difference (canon §12.1); sign convention
+    // matches the Doppler curve (§6.2): > 0 receding, < 0 approaching.
+    let dt = Duration::milliseconds((RANGE_RATE_DT_SEC * 1000.0) as i64);
+    let range_next = slant_range_km(&propagator, observer, now + dt)?;
+    let range_prev = slant_range_km(&propagator, observer, now - dt)?;
+    let range_rate_km_s = (range_next - range_prev) / (2.0 * RANGE_RATE_DT_SEC);
+
     if !az_el.azimuth_deg.is_finite()
         || !az_el.elevation_deg.is_finite()
         || !az_el.range_km.is_finite()
+        || !range_rate_km_s.is_finite()
+        || !altitude_km.is_finite()
     {
         return Err(TrackingError::NotFinite);
     }
+
+    // Pass phase (canon §12.3): below the horizon overrides; otherwise sign of
+    // the range-rate splits approaching from receding.
+    let pass_phase = if az_el.elevation_deg < 0.0 {
+        PassPhase::BelowHorizon
+    } else if range_rate_km_s < 0.0 {
+        PassPhase::Approaching
+    } else {
+        PassPhase::Receding
+    };
+
     let age = (now - record.epoch).num_milliseconds() as f64 / 3_600_000.0;
     Ok(TrackingSnapshot {
         norad_id: record.norad_id,
@@ -123,8 +170,22 @@ fn snapshot_from_parts(
         azimuth_deg: az_el.azimuth_deg,
         elevation_deg: az_el.elevation_deg,
         range_km: az_el.range_km,
+        range_rate_km_s,
+        altitude_km,
+        pass_phase,
         tle_age_hours: age,
     })
+}
+
+/// Slant range (km) to the satellite at `t` — helper for the range-rate central
+/// difference in `snapshot_from_parts`.
+fn slant_range_km(
+    propagator: &Propagator,
+    observer: &Location,
+    t: DateTime<Utc>,
+) -> Result<f64, TrackingError> {
+    let state = propagator.propagate_at(t)?;
+    Ok(teme_to_az_el(state.position_km, t, observer)?.range_km)
 }
 
 pub fn save_last_active(db: &Database, norad: Option<u32>) -> Result<(), DbError> {
@@ -200,6 +261,48 @@ mod tests {
         assert!((0.0..360.0).contains(&snap.azimuth_deg));
         assert!((-90.0..=90.0).contains(&snap.elevation_deg));
         assert!(snap.range_km.is_finite() && snap.range_km > 0.0);
+        // Enriched fields (canon §12): altitude in LEO band, finite range-rate,
+        // and a pass phase consistent with the elevation + range-rate sign.
+        assert!(snap.range_rate_km_s.is_finite());
+        assert!(
+            (150.0..600.0).contains(&snap.altitude_km),
+            "altitude_km: {}",
+            snap.altitude_km
+        );
+        let expected_phase = if snap.elevation_deg < 0.0 {
+            PassPhase::BelowHorizon
+        } else if snap.range_rate_km_s < 0.0 {
+            PassPhase::Approaching
+        } else {
+            PassPhase::Receding
+        };
+        assert_eq!(snap.pass_phase, expected_phase);
+    }
+
+    #[test]
+    fn range_rate_sign_matches_range_trend() {
+        // Central-difference range-rate must agree with the actual range trend
+        // one second either side of the sample instant (canon §12.1).
+        let db = Database::open_in_memory().unwrap();
+        location::save_location(&db, &Location::new(41.0082, 28.9784, 35.0).unwrap()).unwrap();
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        tle_repo_test::upsert(&db, &rec, "test").unwrap();
+        let cache = TleCache::new();
+        let now = rec.epoch + chrono::Duration::minutes(5);
+        let snap = compute_snapshot(&db, &cache, 25544, now).unwrap();
+        let r_before =
+            super::compute_snapshot(&db, &cache, 25544, now - chrono::Duration::seconds(1))
+                .unwrap()
+                .range_km;
+        let r_after =
+            super::compute_snapshot(&db, &cache, 25544, now + chrono::Duration::seconds(1))
+                .unwrap()
+                .range_km;
+        assert_eq!(
+            snap.range_rate_km_s > 0.0,
+            r_after > r_before,
+            "range-rate sign disagrees with range trend"
+        );
     }
 
     #[test]

@@ -2,6 +2,9 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import type { CatalogSyncEvent } from './commands';
 
+/** Where the satellite is in its pass (canon §12.3). */
+export type PassPhase = 'approaching' | 'receding' | 'below_horizon';
+
 export interface TrackingSnapshot {
   norad_id: number;
   name: string;
@@ -9,6 +12,12 @@ export interface TrackingSnapshot {
   azimuth_deg: number;
   elevation_deg: number;
   range_km: number;
+  /** Slant-range rate (km/s); > 0 receding, < 0 approaching (canon §12.1). */
+  range_rate_km_s: number;
+  /** Sub-satellite point geodetic altitude (km) (canon §12.2). */
+  altitude_km: number;
+  /** Pass phase derived from elevation + range-rate sign (canon §12.3). */
+  pass_phase: PassPhase;
   tle_age_hours: number;
 }
 
