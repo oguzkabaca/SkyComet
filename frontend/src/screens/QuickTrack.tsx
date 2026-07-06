@@ -10,6 +10,7 @@ import {
   stopTracking,
   type CommandError,
   type FrequencyRecord,
+  type Location,
   type SatelliteSummary,
 } from '../lib/ipc/commands';
 import { type ScreenId } from '../nav';
@@ -17,6 +18,7 @@ import { useRealtime } from '../stores/useRealtime';
 import { LiveSatelliteCard } from './quick-track/LiveSatelliteCard';
 import { QuickTrackHeader } from './quick-track/QuickTrackHeader';
 import { type RFSelection } from './quick-track/RFProfileSelector';
+import { TrackingVisual } from './quick-track/TrackingVisual';
 import { useFavorites } from './quick-track/favorites';
 import styles from './QuickTrack.module.css';
 
@@ -48,6 +50,7 @@ export function QuickTrack({ onNavigate }: Props) {
   const [tracking, setTracking] = useState(false);
   const [stationReady, setStationReady] = useState(false);
   const [rotorConnected, setRotorConnected] = useState(false);
+  const [observer, setObserver] = useState<Location | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,6 +65,7 @@ export function QuickTrack({ onNavigate }: Props) {
         ]);
         if (cancelled) return;
         setSatellites(list);
+        setObserver(location);
         setStationReady(location !== null);
         setRotorConnected(rotor?.connected ?? false);
         if (last) {
@@ -153,10 +157,12 @@ export function QuickTrack({ onNavigate }: Props) {
         )}
 
         <div className={styles.main}>
-          <div className={styles.visual} aria-label="Sky view">
-            <div className={styles.visualPlaceholder}>
-              {satellites.length === 0 && !loadError ? 'No satellites available yet.' : 'Sky view'}
-            </div>
+          <div className={styles.visual}>
+            <TrackingVisual
+              norad={selectedSat?.norad_id ?? null}
+              snapshot={liveSnapshot}
+              observer={observer}
+            />
           </div>
 
           <aside className={styles.side}>

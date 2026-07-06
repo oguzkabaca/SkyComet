@@ -234,11 +234,18 @@ export interface GroundTrackSample {
   altKm: number;
 }
 
+export interface GeoPoint {
+  latDeg: number;
+  lonDeg: number;
+}
+
 export interface GroundTrack {
   noradId: number;
   centerTime: string;
   windowMinutes: number;
   segments: GroundTrackSample[][];
+  /** Horizon-circle footprint around the sub-point at centerTime (canon §7.7). */
+  footprint: GeoPoint[];
 }
 
 export async function getGroundTrack(

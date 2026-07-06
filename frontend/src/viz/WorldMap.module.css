@@ -64,6 +64,14 @@
   stroke-linejoin: round;
 }
 
+.footprint {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
 .observer {
   fill: var(--ok);
 }

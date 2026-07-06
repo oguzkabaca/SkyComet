@@ -728,6 +728,27 @@ operator overrides them via Settings → Profile.
   - `has_tle` and `has_frequency` are used for the "No TLE" / "No Frequency" badges in the UI.
 - **Added:** F5. **Status:** active.
 
+### 7.7 Satellite footprint (horizon circle)
+
+- **Purpose:** the ground circle within which the satellite is above the local horizon — a
+  context overlay on the ground map (Quick Track).
+- **Input:** sub-point `(lat, lon)` (deg), altitude `h` (km), point count `n`.
+- **Output:** `n` `(lat, lon)` points around the ring (deg).
+- **Formula:**
+  ```
+  λ = acos(R⊕ / (R⊕ + h))                        # Earth-central angular radius
+  for θ in [0, 2π):
+    lat = asin(sin(lat0)·cos(λ) + cos(lat0)·sin(λ)·cos(θ))
+    lon = lon0 + atan2(sin(θ)·sin(λ)·cos(lat0), cos(λ) − sin(lat0)·sin(lat))
+  ```
+- **Constants/Parameters:** `R⊕ = 6378.137` km (§2, spherical); `FOOTPRINT_POINTS_DEFAULT = 72`.
+- **Notes:** `λ` is the same `R⊕/(R⊕+h)` relation as the §11.1 horizon dip, here as a great-circle
+  angular radius; the ring is the spherical destination-point locus at distance `λ`. Longitudes are
+  wrapped to (−180, 180].
+- **Verification:** unit tests in `core/orbit/ground_track.rs` — λ(800 km) ≈ 27.3°, θ=0 point due
+  north at that distance, zero-altitude ring collapses to the sub-point, longitudes stay in range.
+- **Added:** Sprint 2026-07 (Quick Track M3). **Status:** active.
+
 ---
 
 ## 8. F8 — Generic rotor: kinematics, feasibility, path & brief
@@ -1166,6 +1187,7 @@ invariants asserted by the `core/tracking.rs` unit tests (not a single fabricate
 
 ## Change history
 
+- 2026-07-06 — Quick Track redesign (ADR 0013, M3): §7.7 added — satellite footprint (horizon circle) via Earth-central angle λ = acos(R⊕/(R⊕+h)) + spherical destination-point ring; `FOOTPRINT_POINTS_DEFAULT = 72`. Pure `core/orbit/ground_track.rs::footprint_ring`, exposed through `get_ground_track`.
 - 2026-07-06 — Quick Track redesign (ADR 0013, M1): §12 added — live tracking snapshot enrichment: range-rate (central difference, Δt = 1 s, §6.2 sign convention), sub-point altitude (§4/§7.2 reuse), pass phase (elevation + range-rate sign). No new propagation model; live Doppler reuses §6.2.
 - 2026-07-06 — Settings sprint (Location screen redesign): §11 added — observer site geometry (horizon dip + range, GEO belt elevation + visibility limit ~81.3°, Maidenhead grid locator); constants R⊕ 6378.137 km, r_geo 42164 km. Pure `core/observer.rs`, exposed via `get_site_analysis`.
 - 2026-07-05 — Settings redesign sprint: §10 added — location detection network constants (ipwho.is 15 s / 64 KiB, system fix 20 s) + validation rules (ADR 0012).

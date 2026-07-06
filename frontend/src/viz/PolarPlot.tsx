@@ -1,9 +1,19 @@
 import type { PassSample } from '../lib/ipc/commands';
 import styles from './PolarPlot.module.css';
 
+interface LookAngle {
+  azimuthDeg: number;
+  elevationDeg: number;
+}
+
 interface Props {
   samples: PassSample[];
   size?: number;
+  /** Live satellite position — drawn as a filled marker when above the horizon. */
+  live?: LookAngle | null;
+  /** Rotor actual (triangle) and target (outer ring) look angles (M4). */
+  rotorActual?: LookAngle | null;
+  rotorTarget?: LookAngle | null;
 }
 
 /**
@@ -22,10 +32,18 @@ function project(azimuthDeg: number, elevationDeg: number, radius: number) {
   return { x, y };
 }
 
-export function PolarPlot({ samples, size = 300 }: Props) {
+export function PolarPlot({ samples, size = 300, live, rotorActual, rotorTarget }: Props) {
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - 24;
+
+  function at(look: LookAngle) {
+    const p = project(look.azimuthDeg, look.elevationDeg, r);
+    return { cx: cx + p.x, cy: cy + p.y };
+  }
+  const liveP = live && live.elevationDeg >= 0 ? at(live) : null;
+  const actualP = rotorActual ? at(rotorActual) : null;
+  const targetP = rotorTarget ? at(rotorTarget) : null;
 
   const elevationRings = [0, 30, 60].map((el) => ({
     r: ((90 - el) / 90) * r,
@@ -105,6 +123,50 @@ export function PolarPlot({ samples, size = 300 }: Props) {
       {aos && <circle {...projectPoint(aos)} r="5" fill="var(--ok)" />}
       {tca && <circle {...projectPoint(tca)} r="5" fill="var(--warn)" />}
       {los && <circle {...projectPoint(los)} r="5" fill="var(--danger)" />}
+
+      {/* Pointing error: line from rotor actual to target. */}
+      {actualP && targetP && (
+        <line
+          x1={actualP.cx}
+          y1={actualP.cy}
+          x2={targetP.cx}
+          y2={targetP.cy}
+          stroke="var(--danger)"
+          strokeWidth="1.2"
+          strokeDasharray="2 2"
+        />
+      )}
+      {/* Rotor target — outer ring. */}
+      {targetP && (
+        <circle
+          cx={targetP.cx}
+          cy={targetP.cy}
+          r="8"
+          fill="none"
+          stroke="var(--fg-dim)"
+          strokeWidth="1.4"
+        />
+      )}
+      {/* Rotor actual — triangle. */}
+      {actualP && (
+        <polygon
+          points={`${actualP.cx},${actualP.cy - 6} ${actualP.cx - 5.2},${actualP.cy + 4} ${actualP.cx + 5.2},${actualP.cy + 4}`}
+          fill="var(--fg-dim)"
+          stroke="var(--bg-panel)"
+          strokeWidth="0.8"
+        />
+      )}
+      {/* Live satellite — filled marker on top. */}
+      {liveP && (
+        <circle
+          cx={liveP.cx}
+          cy={liveP.cy}
+          r="6"
+          fill="var(--accent)"
+          stroke="var(--bg-panel)"
+          strokeWidth="1.5"
+        />
+      )}
     </svg>
   );
 }

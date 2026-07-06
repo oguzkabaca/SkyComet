@@ -345,11 +345,20 @@ impl From<GroundTrackSample> for GroundTrackSampleDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GeoPointDto {
+    pub lat_deg: f64,
+    pub lon_deg: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GroundTrackDto {
     pub norad_id: u32,
     pub center_time: String,
     pub window_minutes: i64,
     pub segments: Vec<Vec<GroundTrackSampleDto>>,
+    /// Horizon-circle footprint around the sub-point at `center_time` (canon §7.7).
+    pub footprint: Vec<GeoPointDto>,
 }
 
 #[tauri::command]
@@ -389,6 +398,22 @@ pub fn get_ground_track(
         code: "orbit_error".into(),
         message: e.to_string(),
     })?;
+    // Footprint around the sub-point closest to `now` (the middle sample of a
+    // window symmetric about now) — canon §7.7.
+    let footprint = samples
+        .get(samples.len() / 2)
+        .map(|mid| {
+            ground_track::footprint_ring(
+                mid.lat_deg,
+                mid.lon_deg,
+                mid.alt_km,
+                gt_params::FOOTPRINT_POINTS_DEFAULT,
+            )
+            .into_iter()
+            .map(|(lat_deg, lon_deg)| GeoPointDto { lat_deg, lon_deg })
+            .collect()
+        })
+        .unwrap_or_default();
     let segments = ground_track::split_at_dateline(&samples)
         .into_iter()
         .map(|seg| seg.into_iter().map(Into::into).collect())
@@ -398,6 +423,7 @@ pub fn get_ground_track(
         center_time: now.to_rfc3339(),
         window_minutes: window,
         segments,
+        footprint,
     })
 }
 

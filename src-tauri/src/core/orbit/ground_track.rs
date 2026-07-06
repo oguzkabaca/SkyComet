@@ -20,7 +20,13 @@ pub mod params {
     pub const STEP_SEC_DEFAULT: i64 = 30;
     /// Polyline break threshold (deg of longitude).
     pub const DATELINE_SPLIT_THRESHOLD_DEG: f64 = 180.0;
+    /// Points around the footprint ring (§7.7).
+    pub const FOOTPRINT_POINTS_DEFAULT: usize = 72;
 }
+
+/// Spherical Earth radius for footprint geometry — WGS84 semi-major axis
+/// (canon §2). Kilometres. Matches the value in `core/observer.rs` §11.
+const EARTH_RADIUS_KM: f64 = 6378.137;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct GroundTrackSample {
@@ -97,6 +103,47 @@ pub fn split_at_dateline(samples: &[GroundTrackSample]) -> Vec<Vec<GroundTrackSa
         }
     }
     segments
+}
+
+/// Satellite ground footprint — the horizon circle within which the satellite
+/// is above the local horizon, for the sub-point `(sub_lat, sub_lon)` and
+/// altitude `alt_km`. Returns `n` `(lat_deg, lon_deg)` points around the ring.
+/// Canon §7.7.
+pub fn footprint_ring(
+    sub_lat_deg: f64,
+    sub_lon_deg: f64,
+    alt_km: f64,
+    n: usize,
+) -> Vec<(f64, f64)> {
+    let n = n.max(3);
+    // Earth-central angle to the horizon circle — same R⊕/(R⊕+h) relation as the
+    // §11.1 horizon dip, here as a great-circle angular radius.
+    let lambda = (EARTH_RADIUS_KM / (EARTH_RADIUS_KM + alt_km.max(0.0))).acos();
+    let lat0 = sub_lat_deg.to_radians();
+    let lon0 = sub_lon_deg.to_radians();
+    let (sin_lat0, cos_lat0) = lat0.sin_cos();
+    let (sin_l, cos_l) = lambda.sin_cos();
+    (0..n)
+        .map(|i| {
+            let theta = std::f64::consts::TAU * (i as f64) / (n as f64);
+            let sin_lat = sin_lat0 * cos_l + cos_lat0 * sin_l * theta.cos();
+            let lat = sin_lat.clamp(-1.0, 1.0).asin();
+            let lon = lon0 + (theta.sin() * sin_l * cos_lat0).atan2(cos_l - sin_lat0 * sin_lat);
+            (lat.to_degrees(), normalize_lon_deg(lon.to_degrees()))
+        })
+        .collect()
+}
+
+/// Wrap a longitude into (-180, 180].
+fn normalize_lon_deg(lon: f64) -> f64 {
+    let mut l = lon;
+    while l > 180.0 {
+        l -= 360.0;
+    }
+    while l <= -180.0 {
+        l += 360.0;
+    }
+    l
 }
 
 #[cfg(test)]
@@ -197,6 +244,38 @@ mod tests {
         let segs = split_at_dateline(&[one]);
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].len(), 1);
+    }
+
+    #[test]
+    fn footprint_radius_grows_with_altitude() {
+        // Central angle λ = acos(R/(R+h)); at the sub-point on the equator/prime
+        // meridian, the θ=0 ring point sits λ degrees north (canon §7.7).
+        let ring = footprint_ring(0.0, 0.0, 800.0, 72);
+        assert_eq!(ring.len(), 72);
+        let lambda_deg = (6378.137_f64 / (6378.137 + 800.0)).acos().to_degrees();
+        assert!((26.0..29.0).contains(&lambda_deg), "lambda: {lambda_deg}");
+        // θ = 0 point is due north of the sub-point at angular distance λ.
+        let (lat0, lon0) = ring[0];
+        assert!((lat0 - lambda_deg).abs() < 1e-6, "north lat: {lat0}");
+        assert!(lon0.abs() < 1e-6, "north lon: {lon0}");
+    }
+
+    #[test]
+    fn footprint_zero_altitude_collapses_to_point() {
+        let ring = footprint_ring(41.0, 29.0, 0.0, 12);
+        for (lat, lon) in ring {
+            assert!((lat - 41.0).abs() < 1e-6);
+            assert!((lon - 29.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn footprint_longitudes_stay_in_range() {
+        // Sub-point near the dateline: every ring longitude must stay wrapped.
+        let ring = footprint_ring(0.0, 179.0, 1500.0, 72);
+        for (_, lon) in ring {
+            assert!((-180.0..=180.0).contains(&lon), "lon out of range: {lon}");
+        }
     }
 
     #[test]

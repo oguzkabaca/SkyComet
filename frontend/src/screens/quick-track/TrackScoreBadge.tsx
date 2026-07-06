@@ -71,7 +71,8 @@ export function TrackScoreBadge({ norad }: Props) {
         aria-expanded={open}
       >
         <span className={styles.score}>
-          {loading ? '…' : pass ? pass.score : '—'}
+          {/* Pass.score is a [0,1] quality (canon §5.5); show it out of 100. */}
+          {loading ? '…' : pass ? Math.round(pass.score * 100) : '—'}
           {pass && <span className={styles.outOf}>/100</span>}
         </span>
         <span className={styles.level}>{loading ? 'Loading' : level}</span>

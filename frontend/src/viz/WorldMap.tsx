@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
-import type { GroundTrack } from '../lib/ipc/commands';
+import type { GeoPoint, GroundTrack } from '../lib/ipc/commands';
 import { WORLD_LAND_PATH } from './worldLand';
 import styles from './WorldMap.module.css';
 
@@ -57,6 +57,8 @@ interface Observer {
 interface Props {
   track?: GroundTrack | null;
   observer?: Observer | null;
+  /** Horizon-circle footprint to shade (canon §7.7). */
+  footprint?: GeoPoint[] | null;
   /** Enables wheel zoom, drag pan and double-click reset (Settings map). */
   interactive?: boolean;
   /** Called with the clicked map coordinate (requires `interactive`). */
@@ -76,6 +78,7 @@ interface DragState {
 export function WorldMap({
   track,
   observer,
+  footprint,
   interactive = false,
   onPick,
   focusObserver = false,
@@ -185,6 +188,34 @@ export function WorldMap({
     return d;
   });
 
+  // Footprint ring: split into polyline runs wherever consecutive longitudes
+  // jump the dateline, so the outline never streaks across the whole map.
+  const footprintRuns: string[] = [];
+  if (footprint && footprint.length > 1) {
+    let run: GeoPoint[] = [];
+    const flush = () => {
+      if (run.length > 1) {
+        footprintRuns.push(
+          run
+            .map((p, i) => {
+              const { x, y } = project(p.latDeg, p.lonDeg);
+              return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+            })
+            .join(' '),
+        );
+      }
+      run = [];
+    };
+    const ring = [...footprint, footprint[0]!];
+    let prev: GeoPoint | null = null;
+    for (const p of ring) {
+      if (prev && Math.abs(p.lonDeg - prev.lonDeg) > 180) flush();
+      run.push(p);
+      prev = p;
+    }
+    flush();
+  }
+
   // Sub-satellite point = center sample of the joined polyline (closest
   // to `centerTime`). Cheaper than searching by timestamp.
   let subPoint: { x: number; y: number } | null = null;
@@ -270,6 +301,10 @@ export function WorldMap({
         className={styles.frame}
         vectorEffect="non-scaling-stroke"
       />
+
+      {footprintRuns.map((d, i) => (
+        <path key={`fp${i}`} d={d} className={styles.footprint} vectorEffect="non-scaling-stroke" />
+      ))}
 
       {segments.map((d, i) => (
         <path key={i} d={d} className={styles.track} vectorEffect="non-scaling-stroke" />

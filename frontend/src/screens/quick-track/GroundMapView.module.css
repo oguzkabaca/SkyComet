@@ -1,0 +1,14 @@
+.wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.wrap :global(svg) {
+  width: 100%;
+  height: auto;
+}
