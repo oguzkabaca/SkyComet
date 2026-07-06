@@ -22,9 +22,12 @@ import {
 import { type ScreenId } from '../nav';
 import { useRealtime } from '../stores/useRealtime';
 import { LiveSatelliteCard } from './quick-track/LiveSatelliteCard';
+import { PassTimeline } from './quick-track/PassTimeline';
 import { QuickTrackHeader } from './quick-track/QuickTrackHeader';
+import { RFDopplerCard } from './quick-track/RFDopplerCard';
 import { type RFSelection } from './quick-track/RFProfileSelector';
 import { RotorStatusCard } from './quick-track/RotorStatusCard';
+import { SystemHealthBar } from './quick-track/SystemHealthBar';
 import { TrackingVisual } from './quick-track/TrackingVisual';
 import { useFavorites } from './quick-track/favorites';
 import styles from './QuickTrack.module.css';
@@ -164,6 +167,9 @@ export function QuickTrack({ onNavigate }: Props) {
   const rotorActual = rotor?.lastPosition
     ? { azimuthDeg: rotor.lastPosition.azDeg, elevationDeg: rotor.lastPosition.elDeg }
     : null;
+  const selectedFrequency =
+    rfSelection.kind === 'profile' ? (rfFrequencies[rfSelection.index] ?? null) : null;
+  const norad = selectedSat?.norad_id ?? null;
 
   return (
     <div className={styles.screen}>
@@ -203,7 +209,7 @@ export function QuickTrack({ onNavigate }: Props) {
         <div className={styles.main}>
           <div className={styles.visual}>
             <TrackingVisual
-              norad={selectedSat?.norad_id ?? null}
+              norad={norad}
               snapshot={liveSnapshot}
               observer={observer}
               rotorActual={rotorConnected ? rotorActual : null}
@@ -213,6 +219,11 @@ export function QuickTrack({ onNavigate }: Props) {
 
           <aside className={styles.side}>
             <LiveSatelliteCard snapshot={liveSnapshot} />
+            <RFDopplerCard
+              frequency={selectedFrequency}
+              rfLabel={rfLabelOf(rfSelection, rfFrequencies)}
+              snapshot={liveSnapshot}
+            />
             <RotorStatusCard
               status={rotor}
               target={rotorTarget}
@@ -224,8 +235,19 @@ export function QuickTrack({ onNavigate }: Props) {
           </aside>
         </div>
 
+        {norad !== null && (
+          <div className={styles.timeline}>
+            <PassTimeline norad={norad} />
+          </div>
+        )}
+
         <footer className={styles.health}>
-          <span className={styles.healthText}>System status</span>
+          <SystemHealthBar
+            tleAgeHours={liveSnapshot?.tle_age_hours ?? null}
+            tracking={tracking}
+            rotorConnected={rotorConnected}
+            stationReady={stationReady}
+          />
         </footer>
       </div>
     </div>

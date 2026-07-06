@@ -62,7 +62,14 @@
   overflow-y: auto;
 }
 
-/* --- Region 4: bottom system health strip -------------------------------- */
+/* --- Region 4a: full-width pass timeline ---------------------------------- */
+.timeline {
+  flex: none;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* --- Region 4b: bottom system health strip -------------------------------- */
 .health {
   flex: none;
   display: flex;
@@ -71,11 +78,6 @@
   padding: 8px 20px;
   border-top: 1px solid var(--border-soft);
   background: var(--bg-panel-2);
-}
-
-.healthText {
-  font-size: 11.5px;
-  color: var(--fg-faint);
 }
 
 /* --- Responsive: stack side column below the visual (brief §15) ---------- */
