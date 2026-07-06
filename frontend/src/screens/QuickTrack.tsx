@@ -1,9 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 
 import { Button } from '../components/Button';
-import { Card } from '../components/Card';
 import { Field } from '../components/Field';
-import { StatRow } from '../components/StatRow';
 import { StatusLine } from '../components/StatusLine';
 import {
   getLastActiveNorad,
@@ -14,27 +12,13 @@ import {
   type SatelliteSummary,
 } from '../lib/ipc/commands';
 import { useRealtime } from '../stores/useRealtime';
+import { LiveSatelliteCard } from './quick-track/LiveSatelliteCard';
 import styles from './QuickTrack.module.css';
 
 function isCommandError(value: unknown): value is CommandError {
   return (
     typeof value === 'object' && value !== null && 'code' in value && 'message' in value
   );
-}
-
-function formatDeg(value: number | null | undefined, digits = 2): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return `${value.toFixed(digits)}°`;
-}
-
-function formatKm(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return `${value.toFixed(1)} km`;
-}
-
-function formatHours(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return `${value.toFixed(2)} h`;
 }
 
 export function QuickTrack() {
@@ -102,59 +86,72 @@ export function QuickTrack() {
   }
 
   const displaying = snapshot && selected !== '' && snapshot.norad_id === selected;
+  const liveSnapshot = displaying ? snapshot : null;
 
   return (
-    <Card
-      title="Quick Track"
-      action={
-        <Button onClick={handleStop} disabled={!tracking}>
-          Stop
-        </Button>
-      }
-    >
-      <div className={styles.body}>
-        <Field label="Satellite">
-          <select value={selected} onChange={handleSelect}>
-            <option value="">— select —</option>
-            {satellites.map((s) => (
-              <option key={s.norad_id} value={s.norad_id}>
-                {s.name} ({s.norad_id})
-              </option>
-            ))}
-          </select>
-        </Field>
+    <div className={styles.screen}>
+      <div className={styles.panel}>
+        {/* Region 1 — top operations bar */}
+        <header className={styles.ops}>
+          <div className={styles.opsText}>
+            <span className={styles.eyebrow}>Live tracking</span>
+            <h1 className={styles.title}>Quick Track</h1>
+            <p className={styles.sub}>
+              Track a satellite using the current station, rotor and radio configuration.
+            </p>
+          </div>
+          <div className={styles.opsControls}>
+            <Field label="Satellite">
+              <select value={selected} onChange={handleSelect}>
+                <option value="">— select —</option>
+                {satellites.map((s) => (
+                  <option key={s.norad_id} value={s.norad_id}>
+                    {s.name} ({s.norad_id})
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Button onClick={handleStop} disabled={!tracking}>
+              Stop Tracking
+            </Button>
+          </div>
+        </header>
 
-        {loadError && (
-          <StatusLine tone="error" role="alert">
-            Error: {loadError}
-          </StatusLine>
-        )}
-        {error && (
-          <StatusLine tone="error" role="alert">
-            Tracking error ({error.code}): {error.message}
-          </StatusLine>
-        )}
-        {satellites.length === 0 && !loadError && (
-          <StatusLine>No satellites available yet.</StatusLine>
+        {(loadError || error) && (
+          <div className={styles.alerts}>
+            {loadError && (
+              <StatusLine tone="error" role="alert">
+                Error: {loadError}
+              </StatusLine>
+            )}
+            {error && (
+              <StatusLine tone="error" role="alert">
+                Tracking error ({error.code}): {error.message}
+              </StatusLine>
+            )}
+          </div>
         )}
 
-        <div className={styles.readout}>
-          <StatRow label="Name" mono={false}>
-            {displaying ? snapshot!.name : '—'}
-          </StatRow>
-          <StatRow label="Azimuth">{displaying ? formatDeg(snapshot!.azimuth_deg) : '—'}</StatRow>
-          <StatRow label="Elevation">
-            {displaying ? formatDeg(snapshot!.elevation_deg) : '—'}
-          </StatRow>
-          <StatRow label="Range">{displaying ? formatKm(snapshot!.range_km) : '—'}</StatRow>
-          <StatRow label="TLE age">
-            {displaying ? formatHours(snapshot!.tle_age_hours) : '—'}
-          </StatRow>
-          <StatRow label="Updated">
-            {displaying ? new Date(snapshot!.time_utc).toLocaleTimeString() : '—'}
-          </StatRow>
+        {/* Regions 2 + 3 — left visual | right live column */}
+        <div className={styles.main}>
+          <div className={styles.visual} aria-label="Sky view">
+            <div className={styles.visualPlaceholder}>
+              {satellites.length === 0 && !loadError
+                ? 'No satellites available yet.'
+                : 'Sky view'}
+            </div>
+          </div>
+
+          <aside className={styles.side}>
+            <LiveSatelliteCard snapshot={liveSnapshot} />
+          </aside>
         </div>
+
+        {/* Region 4 — bottom system health strip */}
+        <footer className={styles.health}>
+          <span className={styles.healthText}>System status</span>
+        </footer>
       </div>
-    </Card>
+    </div>
   );
 }

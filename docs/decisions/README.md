@@ -21,6 +21,7 @@ Format `NNNN-kebab-case-title.md`, with a sequence number.
 - [0010 — Generic rotor architecture](0010-generic-rotor-architecture.md)
 - [0011 — Single public repository](0011-single-public-repository.md)
 - [0012 — Location detection (IP + system positioning)](0012-location-detection.md)
+- [0013 — Quick Track operations redesign](0013-quick-track-ops-redesign.md)
 
 > Note: some ADR numbers (0003, 0007, 0009) belong to internal development processes and are
 > not part of this repository; the gaps in numbering are intentional.
