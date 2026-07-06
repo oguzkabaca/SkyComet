@@ -22,53 +22,7 @@
   overflow: hidden;
 }
 
-/* --- Region 1: top operations bar ---------------------------------------- */
-.ops {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 18px 20px 16px;
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.opsText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.eyebrow {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: var(--fg-dim);
-}
-
-.title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 20px;
-  line-height: 1.15;
-  color: var(--fg);
-}
-
-.sub {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--fg-dim);
-}
-
-.opsControls {
-  flex: none;
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-}
+/* Region 1 (top operations bar) lives in QuickTrackHeader.module.css. */
 
 .alerts {
   display: flex;

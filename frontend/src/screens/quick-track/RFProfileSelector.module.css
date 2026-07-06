@@ -1,0 +1,184 @@
+.root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 230px;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 38px;
+  padding: 0 12px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.trigger:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.placeholder {
+  font-size: 12.5px;
+  color: var(--fg-faint);
+}
+
+.triggerValue {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  text-align: left;
+}
+
+.triggerName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.autoTag {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-pill);
+  padding: 0 6px;
+}
+
+.triggerFreq {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.caret {
+  flex: none;
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+
+/* --- popover ------------------------------------------------------------- */
+.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  padding: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  overflow-y: auto;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+}
+
+.cardOn {
+  border-color: var(--accent);
+  background: var(--bg-inset);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cardName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.cardMode {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 0 8px;
+}
+
+.cardRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cardKey {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+
+.cardVal {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fg);
+}
+
+.plain {
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg-dim);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.plain:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.plainOn {
+  color: var(--fg);
+  border-style: solid;
+  border-color: var(--accent);
+}

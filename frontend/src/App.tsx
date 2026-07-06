@@ -18,7 +18,7 @@ function App() {
   return (
     <RealtimeProvider>
       <AppShell active={screen} onNavigate={setScreen}>
-        {screen === 'quick-track' && <QuickTrack />}
+        {screen === 'quick-track' && <QuickTrack onNavigate={setScreen} />}
         {screen === 'pass-planner' && <PassPlanner />}
         {screen === 'catalog' && <SatelliteCatalog />}
         {screen === 'rf-planner' && <RFPlanner />}
