@@ -70,6 +70,7 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 | F8 | Generic rotor: quantization/deadband, peak angular rate + feasibility, overlap-aware az-wrap, flip, pre-position, brief score | §8 |
 | F9 | Serial transport constants (SerialRotor) | §8.9 |
 | Sprint 2026-07 (settings redesign) | Location detection network constants | §10 |
+| Sprint 2026-07 (settings redesign) | Observer site geometry (horizon, GEO belt, grid locator) | §11 |
 
 ---
 
@@ -1020,8 +1021,87 @@ fixture-tested (success / provider-reject / missing field / out-of-range / malfo
 
 ---
 
+## 11. Observer site geometry
+
+Satellite-independent geometry derived from a saved ground-station `(lat, lon, alt)` — used by the
+Settings > Location screen to summarize what the site can see. All functions are pure and live in
+`core/observer.rs`; a spherical Earth is used (the site cares about degree-level context, not the
+sub-metre ellipsoid detail that §4 needs). Constants:
+
+| Symbol | Value | Unit | Source |
+|---|---|---|---|
+| R⊕ (spherical Earth radius) | 6 378.137 | km | WGS84 a (§2), spherical approximation |
+| r_geo (geostationary orbit radius) | 42 164 | km | GEO altitude 35 786 km + R⊕ |
+
+### 11.1 Horizon depression (dip) angle
+
+- **Purpose:** how far below the astronomical horizon the true horizon sits, given site altitude
+  `h` — a quick read on the elevation advantage of a raised station.
+- **Input:** `alt_m` (site altitude, clamped to ≥ 0 for this geometry).
+- **Output:** `dip_deg` ≥ 0.
+- **Formula:** `θ_dip = acos( R⊕ / (R⊕ + h) )`, with `h = max(0, alt_m) / 1000` km.
+- **Verification (§11.5):** 100 m → 0.321°; 0 m → 0°.
+
+### 11.2 Line-of-sight horizon range
+
+- **Purpose:** great-circle-ish distance to the geometric horizon from altitude `h` (how far the
+  site "sees" at 0° elevation, ignoring refraction and terrain).
+- **Input:** `alt_m` (clamped to ≥ 0).
+- **Output:** `range_km` ≥ 0.
+- **Formula:** `d = sqrt( h · (2·R⊕ + h) )`, `h` in km.
+- **Verification (§11.5):** 100 m → 35.72 km.
+
+### 11.3 Geostationary-belt elevation
+
+- **Purpose:** elevation of a geostationary satellite `Δλ` degrees away in longitude, from a site
+  at latitude `φ` — and the best-case (same-meridian) value, which tells the operator how usable
+  the GEO belt is at their latitude.
+- **Input:** `lat_deg` (φ), `dlon_deg` (Δλ, longitude offset to the sub-satellite point).
+- **Output:** `el_deg` (may be negative → below the horizon, not visible).
+- **Formula:**
+  ```
+  cos β = cos φ · cos Δλ            // central angle observer↔sub-satellite point
+  el    = atan2( cos β − R⊕/r_geo , sin β )
+  ```
+- **Max elevation:** `geo_max_elevation(φ) = geo_elevation(φ, 0)` (satellite on the site meridian).
+- **Refraction/terrain ignored** (consistent with §5.8 being applied only in the pass planner).
+- **Verification (§11.5):** φ = 41.0082° (Istanbul), Δλ = 0 → 42.6°.
+
+### 11.4 GEO visibility latitude limit
+
+- **Purpose:** the latitude beyond which the GEO belt is never above the horizon.
+- **Output:** `geo_visible(φ) = geo_max_elevation(φ) > 0`.
+- **Limit:** `el = 0` when `cos φ = R⊕/r_geo` → `φ ≈ 81.30°`; above this GEO is unreachable.
+
+### 11.5 Maidenhead grid locator
+
+- **Purpose:** the amateur-radio grid square of the site (station identity, station-details card).
+- **Input:** `lat_deg` ∈ [−90, 90], `lon_deg` ∈ [−180, 180].
+- **Output:** 6-character locator (field pair + square pair + subsquare pair).
+- **Formula (IARU convention):** shift to `lon' = lon + 180 ∈ [0, 360)`, `lat' = lat + 90 ∈ [0, 180)`;
+  field = `A–R` in 20°/10° cells, square = `0–9` in 2°/1° cells, subsquare = `a–x` in 5′/2.5′ cells.
+  Indices are clamped to their valid ranges so the antimeridian/pole edges do not overflow.
+- **Verification (§11.6):** (0, 0) → `JJ00aa`; (41.0082, 28.9784) → `KN41` prefix (Istanbul).
+
+### 11.6 Sanity (implemented — measured values)
+
+| Quantity | Input | Value |
+|---|---|---|
+| Horizon dip | 100 m | 0.321° |
+| Horizon range | 100 m | 35.72 km |
+| GEO max elevation | φ = 41.0082° | 42.6° |
+| GEO visibility limit | — | φ ≈ 81.30° |
+| Grid locator | (0, 0) | `JJ00aa` |
+| Grid locator | Istanbul | `KN41…` |
+
+**Status:** active (2026-07-06, settings sprint — Location screen redesign). Pure functions in
+`core/observer.rs`, unit-tested against the values above. Exposed via `get_site_analysis` IPC.
+
+---
+
 ## Change history
 
+- 2026-07-06 — Settings sprint (Location screen redesign): §11 added — observer site geometry (horizon dip + range, GEO belt elevation + visibility limit ~81.3°, Maidenhead grid locator); constants R⊕ 6378.137 km, r_geo 42164 km. Pure `core/observer.rs`, exposed via `get_site_analysis`.
 - 2026-07-05 — Settings redesign sprint: §10 added — location detection network constants (ipwho.is 15 s / 64 KiB, system fix 20 s) + validation rules (ADR 0012).
 - 2026-06-16 — F9: §8.9 added — serial transport constants (read timeout 500 ms / retry 3 / watchdog 5 s / baud canon).
 - 2026-06-06 — F8.0 (ADR 0010, generic rotor): §8 rewritten as parametric canon (8.1 parameters, 8.2 quantization/deadband/protocol scale, 8.3 peak angular rate + feasibility, 8.4 overlap-aware az-wrap, 8.5 flip, 8.6 pre-position, 8.7 brief score 0-100 + gates, 8.8 sanity); forward-spec constants named; G-5500 constants removed (axis-parametric).

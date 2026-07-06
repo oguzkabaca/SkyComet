@@ -23,25 +23,29 @@
   fill: var(--bg-inset);
 }
 
-/* NASA Blue Marble raster. Over-photo strokes below use fixed translucent
-   white (not theme tokens): the backdrop is the image, not the theme. */
-.imagery {
-  filter: saturate(0.9);
+/* Natural Earth vector land — token-driven so it reads correctly across all
+   six themes. Crisp coastline via a thin non-scaling stroke. */
+.land {
+  fill: var(--map-land);
+  stroke: var(--map-coast);
+  stroke-width: 0.5;
+  stroke-linejoin: round;
 }
 
 .grid {
-  stroke: oklch(1 0 0 / 0.18);
+  stroke: var(--border);
   stroke-width: 0.5;
+  opacity: 0.6;
 }
 
 .equator {
-  stroke: oklch(1 0 0 / 0.45);
+  stroke: var(--border-strong);
   stroke-width: 0.8;
   stroke-dasharray: 4 3;
 }
 
 .tropic {
-  stroke: oklch(1 0 0 / 0.22);
+  stroke: var(--border);
   stroke-width: 0.5;
   stroke-dasharray: 2 4;
 }
@@ -50,13 +54,6 @@
   fill: none;
   stroke: var(--border-strong);
   stroke-width: 1;
-}
-
-/* Dim the photo in the dark themes so it sits with the night-ops palette. */
-:global([data-theme='dark']) .imagery,
-:global([data-theme='midnight']) .imagery,
-:global([data-theme='console']) .imagery {
-  filter: brightness(0.72) saturate(0.75);
 }
 
 .track {
@@ -85,10 +82,7 @@
 }
 
 .label {
-  fill: oklch(1 0 0 / 0.65);
+  fill: var(--fg-faint);
   font-size: 10px;
   font-family: var(--font-mono);
-  paint-order: stroke;
-  stroke: oklch(0 0 0 / 0.5);
-  stroke-width: 2px;
 }

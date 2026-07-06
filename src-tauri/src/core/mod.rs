@@ -2,6 +2,7 @@ pub mod analysis;
 pub mod antenna;
 pub mod db;
 pub mod location;
+pub mod observer;
 pub mod orbit;
 pub mod profile;
 pub mod radio;

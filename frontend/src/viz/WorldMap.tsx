@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { GroundTrack } from '../lib/ipc/commands';
-import worldImagery from '../assets/world-imagery.jpg';
+import { WORLD_LAND_PATH } from './worldLand';
 import styles from './WorldMap.module.css';
 
 const WIDTH = 720;
@@ -10,9 +10,11 @@ const MARGIN = 12;
 const PLOT_W = WIDTH - MARGIN * 2;
 const PLOT_H = HEIGHT - MARGIN * 2;
 
-/** Max zoom 8x; wheel steps by 1.2 per notch. */
-const MIN_VIEW_W = WIDTH / 8;
+/** Max zoom 12x; wheel steps by 1.2 per notch. */
+const MIN_VIEW_W = WIDTH / 12;
 const ZOOM_STEP = 1.2;
+/** Initial view width when focusing the observer (~6x — regional context). */
+const FOCUS_VIEW_W = WIDTH / 6;
 /** Pointer movement (px) below this counts as a click, above as a drag. */
 const CLICK_SLOP_PX = 4;
 
@@ -59,6 +61,8 @@ interface Props {
   interactive?: boolean;
   /** Called with the clicked map coordinate (requires `interactive`). */
   onPick?: (latDeg: number, lonDeg: number) => void;
+  /** Start zoomed to the observer instead of the whole world (Settings). */
+  focusObserver?: boolean;
 }
 
 interface DragState {
@@ -69,10 +73,29 @@ interface DragState {
   moved: boolean;
 }
 
-export function WorldMap({ track, observer, interactive = false, onPick }: Props) {
+export function WorldMap({
+  track,
+  observer,
+  interactive = false,
+  onPick,
+  focusObserver = false,
+}: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const focusedRef = useRef(false);
   const [view, setView] = useState<ViewBox>(FULL_VIEW);
+
+  // Zoom to the observer on first load (Settings). Runs once, when the observer
+  // first becomes known — later coordinate edits must not yank the view around
+  // while the operator is panning. Double-click still resets to the full world.
+  useEffect(() => {
+    if (!focusObserver || !observer || focusedRef.current) return;
+    focusedRef.current = true;
+    const { x, y } = project(observer.latitudeDeg, observer.longitudeDeg);
+    const w = FOCUS_VIEW_W;
+    const h = w * (HEIGHT / WIDTH);
+    setView(clampView({ x: x - w / 2, y: y - h / 2, w, h }));
+  }, [focusObserver, observer]);
 
   // React's synthetic wheel listeners are passive, so zoom (which must
   // preventDefault to stop page scroll) is attached manually.
@@ -196,16 +219,14 @@ export function WorldMap({ track, observer, interactive = false, onPick }: Props
       onDoubleClick={handleDoubleClick}
     >
       <rect x={MARGIN} y={MARGIN} width={PLOT_W} height={PLOT_H} className={styles.ocean} />
-      {/* NASA Blue Marble (public domain), equirectangular — maps linearly
-          onto the canon §7.4 projection, so overlays stay byte-exact. */}
-      <image
-        href={worldImagery}
-        x={MARGIN}
-        y={MARGIN}
-        width={PLOT_W}
-        height={PLOT_H}
-        preserveAspectRatio="none"
-        className={styles.imagery}
+      {/* Natural Earth 50m land (public domain), pre-projected with the canon
+          §7.4 project() geometry — shares the exact coordinate space of the
+          overlays. evenodd renders inland lakes/holes correctly. */}
+      <path
+        d={WORLD_LAND_PATH}
+        className={styles.land}
+        fillRule="evenodd"
+        vectorEffect="non-scaling-stroke"
       />
       {meridians.map((lon) => {
         const { x } = project(0, lon);

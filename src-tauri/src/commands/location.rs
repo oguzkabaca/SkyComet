@@ -5,6 +5,7 @@ use crate::core::db::Database;
 use crate::core::location::detect::{self, DetectError, DetectedLocation};
 use crate::core::location::system;
 use crate::core::location::{self, Location, LocationError};
+use crate::core::observer::{self, SiteAnalysis};
 
 #[derive(Debug, Serialize)]
 pub struct CommandError {
@@ -63,6 +64,20 @@ pub fn set_location(
     let loc = Location::new(latitude_deg, longitude_deg, altitude_m)?;
     location::save_location(db.inner(), &loc)?;
     Ok(loc)
+}
+
+/// Observer site geometry for the Location screen (canon §11): horizon dip and
+/// range, GEO-belt elevation/visibility, Maidenhead grid locator. Validates the
+/// coordinates through `Location::new` first, so the analysis never runs on an
+/// out-of-range point.
+#[tauri::command]
+pub fn get_site_analysis(
+    latitude_deg: f64,
+    longitude_deg: f64,
+    altitude_m: f64,
+) -> Result<SiteAnalysis, CommandError> {
+    let loc = Location::new(latitude_deg, longitude_deg, altitude_m)?;
+    Ok(observer::analyze(&loc))
 }
 
 /// Coarse (city-level) location from the machine's public IP (ADR 0012 D1).

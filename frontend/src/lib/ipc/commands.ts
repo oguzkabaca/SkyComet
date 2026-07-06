@@ -51,6 +51,29 @@ export async function detectLocationSystem(): Promise<DetectedLocation> {
   return invoke<DetectedLocation>('detect_location_system');
 }
 
+/** Observer site geometry for the Location screen (canon §11). */
+export interface SiteAnalysis {
+  /** Maidenhead grid locator, 6 characters. */
+  gridLocator: string;
+  /** Horizon depression angle (degrees) from the site altitude. */
+  horizonDipDeg: number;
+  /** Line-of-sight distance to the horizon (km). */
+  horizonRangeKm: number;
+  /** Best-case (same-meridian) GEO-belt elevation (degrees). */
+  geoMaxElevationDeg: number;
+  /** Whether the geostationary belt is above the horizon at this latitude. */
+  geoVisible: boolean;
+}
+
+/** Horizon / GEO-belt / grid-locator summary for a candidate location. */
+export async function getSiteAnalysis(input: Location): Promise<SiteAnalysis> {
+  return invoke<SiteAnalysis>('get_site_analysis', {
+    latitudeDeg: input.latitude_deg,
+    longitudeDeg: input.longitude_deg,
+    altitudeM: input.altitude_m,
+  });
+}
+
 export async function listSatellites(): Promise<SatelliteSummary[]> {
   return invoke<SatelliteSummary[]>('list_satellites');
 }

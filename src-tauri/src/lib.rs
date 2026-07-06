@@ -58,6 +58,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::location::get_location,
             commands::location::set_location,
+            commands::location::get_site_analysis,
             commands::location::detect_location_ip,
             commands::location::detect_location_system,
             commands::tracking::list_satellites,

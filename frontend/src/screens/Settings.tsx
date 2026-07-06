@@ -8,6 +8,7 @@ import {
   detectLocationIp,
   detectLocationSystem,
   getLocation,
+  getSiteAnalysis,
   setLocation,
   getProfile,
   setProfile,
@@ -19,6 +20,7 @@ import {
   type OperatorProfile,
   type Polarization,
   type RotorProfile,
+  type SiteAnalysis,
 } from '../lib/ipc/commands';
 import { type Theme } from '../theme/ThemeContext';
 import { useTheme } from '../theme/useTheme';
@@ -108,8 +110,9 @@ export function Settings() {
             </svg>
           </button>
           <div className={styles.headText}>
-            <h1 className={styles.title}>Settings</h1>
-            <p className={styles.sub}>Station configuration — appearance, location and operator hardware.</p>
+            <span className={styles.eyebrow}>Settings</span>
+            <h1 className={styles.title}>{section.title}</h1>
+            <p className={styles.sub}>{section.sub}</p>
           </div>
         </header>
 
@@ -130,8 +133,6 @@ export function Settings() {
         )}
 
         <div className={styles.content}>
-          <h2 className={styles.contentTitle}>{section.title}</h2>
-          <p className={styles.sectionSub}>{section.sub}</p>
           {active === 'theme' && <ThemeSection />}
           {active === 'location' && <LocationForm />}
           {active === 'profile' && <ProfileForm />}
@@ -204,6 +205,30 @@ function describeDetection(d: DetectedLocation): string {
   return `Detected: ${place} (${accuracy}). Review, then save.`;
 }
 
+function fmtLat(v: number): string {
+  return `${Math.abs(v).toFixed(4)}° ${v >= 0 ? 'N' : 'S'}`;
+}
+
+function fmtLon(v: number): string {
+  return `${Math.abs(v).toFixed(4)}° ${v >= 0 ? 'E' : 'W'}`;
+}
+
+/** Session provenance of the coordinates now in the form. */
+function sourceLabel(mode: LocationMode, detected: DetectedLocation | null): string {
+  if (detected) return detected.label ? `${detected.source} · ${detected.label}` : detected.source;
+  return mode === 'manual' ? 'Manual entry' : 'Manual entry (not yet detected)';
+}
+
+/** One label/value row inside a summary card. */
+function CardRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={styles.cardRow}>
+      <span className={styles.cardLabel}>{label}</span>
+      <span className={styles.cardValue}>{value}</span>
+    </div>
+  );
+}
+
 function LocationForm() {
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
@@ -212,6 +237,9 @@ function LocationForm() {
   const [detecting, setDetecting] = useState(false);
   const [detected, setDetected] = useState<DetectedLocation | null>(null);
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
+  // Last saved coordinates — Cancel restores these; Save advances them.
+  const [baseline, setBaseline] = useState<Location | null>(null);
+  const [analysis, setAnalysis] = useState<SiteAnalysis | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,6 +250,7 @@ function LocationForm() {
           setLatitude(loc.latitude_deg.toString());
           setLongitude(loc.longitude_deg.toString());
           setAltitude(loc.altitude_m.toString());
+          setBaseline(loc);
         }
         setStatus({ kind: 'idle' });
       })
@@ -255,51 +284,130 @@ function LocationForm() {
     }
   }
 
-  // Live map marker: follows the (unsaved) field values so manual edits and
-  // detection results are visible before saving. Number('') is 0, so guard
-  // empty fields explicitly.
-  const mapLat = Number(latitude);
-  const mapLon = Number(longitude);
-  const observer =
+  // Parse once: the map marker, dirty check and site analysis all key off the
+  // (unsaved) field values. Number('') is 0, so guard empty fields explicitly.
+  const latNum = Number(latitude);
+  const lonNum = Number(longitude);
+  const altNum = Number(altitude);
+  const coordsValid =
     latitude.trim() !== '' &&
     longitude.trim() !== '' &&
-    Number.isFinite(mapLat) &&
-    Number.isFinite(mapLon) &&
-    Math.abs(mapLat) <= 90 &&
-    Math.abs(mapLon) <= 180
-      ? { latitudeDeg: mapLat, longitudeDeg: mapLon }
-      : null;
+    Number.isFinite(latNum) &&
+    Number.isFinite(lonNum) &&
+    Math.abs(latNum) <= 90 &&
+    Math.abs(lonNum) <= 180;
+  const fullValid =
+    coordsValid &&
+    altitude.trim() !== '' &&
+    Number.isFinite(altNum) &&
+    altNum >= -500 &&
+    altNum <= 10_000;
+
+  const observer = coordsValid ? { latitudeDeg: latNum, longitudeDeg: lonNum } : null;
+
+  const dirty = baseline
+    ? latNum !== baseline.latitude_deg ||
+      lonNum !== baseline.longitude_deg ||
+      altNum !== baseline.altitude_m
+    : latitude.trim() !== '' || longitude.trim() !== '' || altitude.trim() !== '';
+
+  // Site geometry (canon §11): recompute in core whenever the valid coordinates
+  // change. Debounced so typing does not spam the IPC; the browser preview has
+  // no Tauri bridge, so a rejected call just leaves the cards blank.
+  useEffect(() => {
+    if (!fullValid) return;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      getSiteAnalysis({ latitude_deg: latNum, longitude_deg: lonNum, altitude_m: altNum })
+        .then((a) => {
+          if (!cancelled) setAnalysis(a);
+        })
+        .catch(() => {
+          if (!cancelled) setAnalysis(null);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [fullValid, latNum, lonNum, altNum]);
+
+  function handleCancel() {
+    if (baseline) {
+      setLatitude(baseline.latitude_deg.toString());
+      setLongitude(baseline.longitude_deg.toString());
+      setAltitude(baseline.altitude_m.toString());
+    } else {
+      setLatitude('');
+      setLongitude('');
+      setAltitude('');
+    }
+    setMode('manual');
+    setDetected(null);
+    setStatus({ kind: 'idle' });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const lat = Number(latitude);
-    const lon = Number(longitude);
-    const alt = Number(altitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(alt)) {
+    if (!Number.isFinite(latNum) || !Number.isFinite(lonNum) || !Number.isFinite(altNum)) {
       setStatus({ kind: 'error', message: 'All fields must be numbers.' });
       return;
     }
     const payload: Location = {
-      latitude_deg: lat,
-      longitude_deg: lon,
-      altitude_m: alt,
+      latitude_deg: latNum,
+      longitude_deg: lonNum,
+      altitude_m: altNum,
     };
     try {
-      await setLocation(payload);
+      const saved = await setLocation(payload);
+      setBaseline(saved);
       setStatus({ kind: 'saved', at: Date.now() });
     } catch (err: unknown) {
       setStatus({ kind: 'error', message: errorMessage(err) });
     }
   }
 
+  const summary = coordsValid
+    ? `${fmtLat(latNum)} · ${fmtLon(lonNum)}`
+    : 'No location set';
+  const savedBadge = baseline ? (dirty ? 'Unsaved changes' : 'Saved') : 'Not saved';
+
+  // The analysis state lags a step behind invalid edits; gate it on the current
+  // validity so a stale result never shows for out-of-range coordinates.
+  const shownAnalysis = fullValid ? analysis : null;
+
+  const geoValue = shownAnalysis
+    ? shownAnalysis.geoVisible
+      ? `${shownAnalysis.geoMaxElevationDeg.toFixed(1)}°`
+      : 'Below horizon'
+    : '—';
+
   return (
     <form onSubmit={handleSubmit} className={styles.locationLayout}>
-      <div className={styles.locationFields}>
-        {/* Not a <Field>: that renders a <label>, and wrapping a button group in
-            a label misroutes label clicks to the first button. */}
-        <div className={styles.sourceBlock}>
-          <span className={styles.modeLabel}>Source</span>
-          <div className={styles.sourceRow}>
+      <div className={styles.summaryBar}>
+        <div className={styles.summaryMain}>
+          <span className={styles.summaryCoords}>{summary}</span>
+          {shownAnalysis && (
+            <span className={styles.summaryGrid}>{shownAnalysis.gridLocator}</span>
+          )}
+        </div>
+        <span
+          className={
+            dirty && baseline
+              ? `${styles.summaryBadge} ${styles.summaryBadgeDirty}`
+              : styles.summaryBadge
+          }
+        >
+          {savedBadge}
+        </span>
+      </div>
+
+      <div className={styles.locationMain}>
+        <div className={styles.locationFields}>
+          {/* Not a <Field>: that renders a <label>, and wrapping a button group in
+              a label misroutes label clicks to the first button. */}
+          <div className={styles.sourceBlock}>
+            <span className={styles.modeLabel}>Source</span>
             <SegmentedControl<LocationMode>
               ariaLabel="Location source"
               options={[
@@ -314,70 +422,131 @@ function LocationForm() {
               }}
             />
             {mode !== 'manual' && (
-              <Button variant="secondary" type="button" onClick={handleDetect} disabled={detecting}>
-                {detecting ? 'Detecting…' : 'Detect'}
-              </Button>
+              <div className={styles.detectPanel}>
+                <p className={styles.sourceHint} role="status">
+                  {detected
+                    ? describeDetection(detected)
+                    : MODE_HINT[mode as Exclude<LocationMode, 'manual'>]}
+                </p>
+                <div className={styles.detectActions}>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={handleDetect}
+                    disabled={detecting}
+                  >
+                    {detecting ? 'Detecting…' : detected ? 'Detect again' : 'Detect'}
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
-          {(detected || mode !== 'manual') && (
-            <p className={styles.sourceHint} role="status">
-              {detected
-                ? describeDetection(detected)
-                : MODE_HINT[mode as Exclude<LocationMode, 'manual'>]}
-            </p>
-          )}
+
+          <Field label="Latitude (°)">
+            <input
+              type="number"
+              step="any"
+              value={latitude}
+              onChange={(e) => setLatitude(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Longitude (°)">
+            <input
+              type="number"
+              step="any"
+              value={longitude}
+              onChange={(e) => setLongitude(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Altitude (m)">
+            <input
+              type="number"
+              step="any"
+              value={altitude}
+              onChange={(e) => setAltitude(e.target.value)}
+              required
+            />
+          </Field>
         </div>
 
-        <Field label="Latitude (°)">
-          <input
-            type="number"
-            step="any"
-            value={latitude}
-            onChange={(e) => setLatitude(e.target.value)}
-            required
+        <div className={styles.mapBox}>
+          <WorldMap
+            observer={observer}
+            interactive
+            focusObserver
+            onPick={(lat, lon) => {
+              setLatitude(lat.toFixed(4));
+              setLongitude(lon.toFixed(4));
+              setDetected(null);
+            }}
           />
-        </Field>
-        <Field label="Longitude (°)">
-          <input
-            type="number"
-            step="any"
-            value={longitude}
-            onChange={(e) => setLongitude(e.target.value)}
-            required
-          />
-        </Field>
-        <Field label="Altitude (m)">
-          <input
-            type="number"
-            step="any"
-            value={altitude}
-            onChange={(e) => setAltitude(e.target.value)}
-            required
-          />
-        </Field>
-
-        <div className={styles.actions}>
-          <Button variant="primary" type="submit" disabled={status.kind === 'loading'}>
-            Save
-          </Button>
+          <p className={styles.mapHint}>
+            Click to set coordinates · scroll to zoom · drag to pan · double-click to reset.
+          </p>
         </div>
-        <FormStatus status={status} />
       </div>
 
-      <div className={styles.mapBox}>
-        <WorldMap
-          observer={observer}
-          interactive
-          onPick={(lat, lon) => {
-            setLatitude(lat.toFixed(4));
-            setLongitude(lon.toFixed(4));
-            setDetected(null);
-          }}
-        />
-        <p className={styles.mapHint}>
-          Click the map to set coordinates · scroll to zoom · drag to pan · double-click to
-          reset{observer ? ' — unsaved until you press Save.' : '.'}
-        </p>
+      <div className={styles.cardGrid}>
+        <section className={styles.infoCard}>
+          <h3 className={styles.infoTitle}>Station details</h3>
+          <CardRow label="Latitude" value={coordsValid ? fmtLat(latNum) : '—'} />
+          <CardRow label="Longitude" value={coordsValid ? fmtLon(lonNum) : '—'} />
+          <CardRow
+            label="Altitude"
+            value={fullValid ? `${altNum.toLocaleString()} m` : '—'}
+          />
+          <CardRow label="Grid locator" value={shownAnalysis?.gridLocator ?? '—'} />
+        </section>
+
+        <section className={styles.infoCard}>
+          <h3 className={styles.infoTitle}>Position quality</h3>
+          <CardRow label="Source" value={sourceLabel(mode, detected)} />
+          <CardRow
+            label="Accuracy"
+            value={
+              detected
+                ? detected.accuracy_m != null
+                  ? `±${Math.round(detected.accuracy_m)} m`
+                  : 'city-level'
+                : '—'
+            }
+          />
+          <CardRow label="Save state" value={savedBadge} />
+        </section>
+
+        <section className={styles.infoCard}>
+          <h3 className={styles.infoTitle}>Tracking impact</h3>
+          <CardRow
+            label="Horizon dip"
+            value={shownAnalysis ? `${shownAnalysis.horizonDipDeg.toFixed(2)}°` : '—'}
+          />
+          <CardRow
+            label="Horizon range"
+            value={shownAnalysis ? `${shownAnalysis.horizonRangeKm.toFixed(0)} km` : '—'}
+          />
+          <CardRow label="GEO max elevation" value={geoValue} />
+          <CardRow
+            label="GEO belt"
+            value={shownAnalysis ? (shownAnalysis.geoVisible ? 'Visible' : 'Not visible') : '—'}
+          />
+        </section>
+      </div>
+
+      <div className={styles.actions}>
+        <Button
+          variant="secondary"
+          type="button"
+          onClick={handleCancel}
+          disabled={!dirty || status.kind === 'loading'}
+        >
+          Cancel
+        </Button>
+        <Button variant="primary" type="submit" disabled={!fullValid || status.kind === 'loading'}>
+          Save
+        </Button>
+        <FormStatus status={status} />
       </div>
     </form>
   );

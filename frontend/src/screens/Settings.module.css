@@ -65,8 +65,16 @@
 .headText {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
 }
 
 .title {
@@ -74,7 +82,7 @@
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 20px;
-  line-height: 1.1;
+  line-height: 1.15;
   color: var(--fg);
 }
 
@@ -125,21 +133,6 @@
   min-width: 0;
   padding: 20px;
   overflow-y: auto;
-}
-
-.contentTitle {
-  margin: 0 0 2px;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.1px;
-  color: var(--fg);
-}
-
-.sectionSub {
-  margin: 0 0 16px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--fg-dim);
 }
 
 /* --- theme section --------------------------------------------------------- */
@@ -244,11 +237,67 @@
   color: var(--fg-dim);
 }
 
-/* --- location: fields left, map right -------------------------------------- */
+/* --- location: summary bar + (form | compact map) + info cards ------------- */
 
 .locationLayout {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Current-location summary band. */
+.summaryBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 16px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+}
+
+.summaryMain {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.summaryCoords {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.summaryGrid {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  padding: 1px 8px;
+  background: var(--bg-inset);
+  border-radius: var(--r-pill);
+}
+
+.summaryBadge {
+  flex: none;
+  font-size: 11px;
+  color: var(--fg-dim);
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+
+.summaryBadgeDirty {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* Form column left, compact map right. */
+.locationMain {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }
@@ -262,20 +311,30 @@
 .sourceBlock {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.sourceRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .modeLabel {
   font-size: 11px;
   color: var(--fg-dim);
   letter-spacing: 0.2px;
+}
+
+/* Detection helper (IP / GPS): hint + Detect action grouped in one inset card
+   so the button no longer crowds the segmented control. */
+.detectPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+}
+
+.detectActions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .sourceHint {
@@ -285,6 +344,7 @@
   color: var(--fg-dim);
 }
 
+/* Map fills its column (no wasted space); the form column keeps it in check. */
 .mapBox {
   width: 100%;
   min-width: 0;
@@ -294,6 +354,53 @@
   margin: 4px 0 0;
   font-size: 11.5px;
   color: var(--fg-faint);
+}
+
+/* Info cards: station details / position quality / tracking impact. */
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.infoCard {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+}
+
+.infoTitle {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.cardRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.cardLabel {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.cardValue {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--fg);
+  text-align: right;
 }
 
 /* --- shared form pieces ----------------------------------------------------- */
@@ -327,5 +434,6 @@
 
 .actions {
   display: flex;
+  align-items: center;
   gap: 10px;
 }
