@@ -44,6 +44,8 @@ pub fn run() {
             app.manage(Arc::clone(&tle_cache));
             // F9 — live serial rotor connection (starts disconnected).
             app.manage(commands::serial_rotor::RotorConnection::default());
+            // Quick Track (ADR 0013 D2) — auto-track drive state.
+            app.manage(commands::serial_rotor::AutoTrack::default());
 
             // F5 — seed the catalog from the bundled snapshot if the DB
             // is still empty. Failures are logged but never block startup;
@@ -90,6 +92,9 @@ pub fn run() {
             commands::serial_rotor::rotor_read_position,
             commands::serial_rotor::rotor_stop,
             commands::serial_rotor::rotor_status,
+            commands::serial_rotor::rotor_pause,
+            commands::serial_rotor::rotor_resume,
+            commands::serial_rotor::rotor_park,
         ])
         .run(tauri::generate_context!())
     {
@@ -113,8 +118,37 @@ async fn tracking_loop(
         };
         let now = chrono::Utc::now();
         match tracking::compute_snapshot(&db, &cache, norad, now) {
-            Ok(snapshot) => emit_update(&handle, &snapshot),
+            Ok(snapshot) => {
+                emit_update(&handle, &snapshot);
+                drive_rotor(&handle, &snapshot);
+            }
             Err(err) => emit_error(&handle, norad, &err),
+        }
+    }
+}
+
+/// Auto-track (ADR 0013 D2): steer a connected rotor toward the live satellite
+/// az/el each tick. Best-effort — a serial error is logged, not fatal; the
+/// az-wrap / limit / deadband logic lives in `SerialRotor::goto`. Skips when
+/// paused or when the satellite is below the horizon.
+fn drive_rotor(handle: &tauri::AppHandle, snapshot: &TrackingSnapshot) {
+    use crate::commands::serial_rotor::{AutoTrack, RotorConnection};
+    use crate::core::rotor::backend::RotorBackend;
+    use crate::core::rotor::protocol::RotorPosition;
+
+    if handle.state::<AutoTrack>().is_paused() || snapshot.elevation_deg < 0.0 {
+        return;
+    }
+    let conn = handle.state::<RotorConnection>();
+    let Ok(mut guard) = conn.0.lock() else {
+        return;
+    };
+    if let Some(rotor) = guard.as_mut() {
+        if let Err(e) = rotor.goto(RotorPosition {
+            az_deg: snapshot.azimuth_deg,
+            el_deg: snapshot.elevation_deg,
+        }) {
+            tracing::warn!(error = %e, "auto-track goto failed");
         }
     }
 }

@@ -1,16 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { StatusLine } from '../components/StatusLine';
 import {
   getLastActiveNorad,
   getLocation,
   listSatellites,
+  rotorPark,
+  rotorPause,
+  rotorReadPosition,
+  rotorResume,
   rotorStatus,
+  rotorStop,
   startTracking,
   stopTracking,
   type CommandError,
   type FrequencyRecord,
   type Location,
+  type RotorStatus,
   type SatelliteSummary,
 } from '../lib/ipc/commands';
 import { type ScreenId } from '../nav';
@@ -18,6 +24,7 @@ import { useRealtime } from '../stores/useRealtime';
 import { LiveSatelliteCard } from './quick-track/LiveSatelliteCard';
 import { QuickTrackHeader } from './quick-track/QuickTrackHeader';
 import { type RFSelection } from './quick-track/RFProfileSelector';
+import { RotorStatusCard } from './quick-track/RotorStatusCard';
 import { TrackingVisual } from './quick-track/TrackingVisual';
 import { useFavorites } from './quick-track/favorites';
 import styles from './QuickTrack.module.css';
@@ -49,7 +56,7 @@ export function QuickTrack({ onNavigate }: Props) {
   const [rfFrequencies, setRfFrequencies] = useState<FrequencyRecord[]>([]);
   const [tracking, setTracking] = useState(false);
   const [stationReady, setStationReady] = useState(false);
-  const [rotorConnected, setRotorConnected] = useState(false);
+  const [rotor, setRotor] = useState<RotorStatus | null>(null);
   const [observer, setObserver] = useState<Location | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -57,7 +64,7 @@ export function QuickTrack({ onNavigate }: Props) {
     let cancelled = false;
     void (async () => {
       try {
-        const [list, last, location, rotor] = await Promise.all([
+        const [list, last, location, rotorNow] = await Promise.all([
           listSatellites(),
           getLastActiveNorad(),
           getLocation().catch(() => null),
@@ -67,7 +74,7 @@ export function QuickTrack({ onNavigate }: Props) {
         setSatellites(list);
         setObserver(location);
         setStationReady(location !== null);
-        setRotorConnected(rotor?.connected ?? false);
+        setRotor(rotorNow);
         if (last) {
           const restored = list.find((s) => s.norad_id === last);
           if (restored) {
@@ -84,6 +91,35 @@ export function QuickTrack({ onNavigate }: Props) {
       cancelled = true;
     };
   }, []);
+
+  // Poll the rotor: refresh the live device position (also feeds the watchdog)
+  // and connection/pause state. Cheap when disconnected — the read just rejects.
+  const refreshRotor = useCallback(async () => {
+    try {
+      await rotorReadPosition();
+    } catch {
+      /* disconnected or a silent device — status still reports connection. */
+    }
+    try {
+      setRotor(await rotorStatus());
+    } catch {
+      /* leave the last known status in place. */
+    }
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => void refreshRotor(), 1500);
+    return () => clearInterval(id);
+  }, [refreshRotor]);
+
+  async function handleRotorAction(action: () => Promise<void>) {
+    try {
+      await action();
+    } catch (err: unknown) {
+      setLoadError(isCommandError(err) ? err.message : String(err));
+    }
+    void refreshRotor();
+  }
 
   function handleSelectSat(sat: SatelliteSummary) {
     setSelectedSat(sat);
@@ -120,6 +156,14 @@ export function QuickTrack({ onNavigate }: Props) {
 
   const displaying = tracking && snapshot && snapshot.norad_id === selectedSat?.norad_id;
   const liveSnapshot = displaying ? snapshot : null;
+
+  const rotorConnected = rotor?.connected ?? false;
+  const rotorTarget = liveSnapshot
+    ? { azimuthDeg: liveSnapshot.azimuth_deg, elevationDeg: liveSnapshot.elevation_deg }
+    : null;
+  const rotorActual = rotor?.lastPosition
+    ? { azimuthDeg: rotor.lastPosition.azDeg, elevationDeg: rotor.lastPosition.elDeg }
+    : null;
 
   return (
     <div className={styles.screen}>
@@ -162,11 +206,21 @@ export function QuickTrack({ onNavigate }: Props) {
               norad={selectedSat?.norad_id ?? null}
               snapshot={liveSnapshot}
               observer={observer}
+              rotorActual={rotorConnected ? rotorActual : null}
+              rotorTarget={rotorConnected ? rotorTarget : null}
             />
           </div>
 
           <aside className={styles.side}>
             <LiveSatelliteCard snapshot={liveSnapshot} />
+            <RotorStatusCard
+              status={rotor}
+              target={rotorTarget}
+              onPause={() => handleRotorAction(rotorPause)}
+              onResume={() => handleRotorAction(rotorResume)}
+              onPark={() => handleRotorAction(rotorPark)}
+              onStop={() => handleRotorAction(rotorStop)}
+            />
           </aside>
         </div>
 

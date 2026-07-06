@@ -36,6 +36,7 @@ const DISCONNECTED: RotorStatus = {
   alive: false,
   rotorName: null,
   lastPosition: null,
+  autoTrackPaused: false,
 };
 
 function formatDeg(v: number | null | undefined): string {

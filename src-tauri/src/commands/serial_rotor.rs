@@ -8,6 +8,7 @@
 //! Physical verification (real G-5500 on a COM port, satellite track) is an
 //! operator task — it cannot run in CI.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -27,6 +28,20 @@ type SerialRotorPort = SerialRotor<Box<dyn SerialPort>>;
 /// Live serial rotor connection (None when disconnected). Managed by Tauri.
 #[derive(Default)]
 pub struct RotorConnection(pub Mutex<Option<SerialRotorPort>>);
+
+/// Auto-track state (ADR 0013 D2): while tracking, the loop drives the rotor to
+/// the live satellite az/el unless paused. Parking pauses it so the loop does
+/// not immediately chase the satellite again.
+#[derive(Default)]
+pub struct AutoTrack {
+    pub paused: AtomicBool,
+}
+
+impl AutoTrack {
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Relaxed)
+    }
+}
 
 fn map_err<E: std::fmt::Display>(code: &str, err: E) -> CommandError {
     CommandError {
@@ -84,6 +99,8 @@ pub struct RotorStatusDto {
     pub alive: bool,
     pub rotor_name: Option<String>,
     pub last_position: Option<RotorPositionDto>,
+    /// Auto-track paused (ADR 0013 D2) — the loop holds instead of driving.
+    pub auto_track_paused: bool,
 }
 
 /// Enumerate host serial ports for the connect dropdown.
@@ -106,6 +123,7 @@ pub fn list_serial_ports() -> Result<Vec<SerialPortDto>, CommandError> {
 pub fn connect_rotor(
     db: State<'_, Database>,
     conn: State<'_, RotorConnection>,
+    auto: State<'_, AutoTrack>,
     port: String,
 ) -> Result<RotorStatusDto, CommandError> {
     let profile = op_profile::load_or_seed(db.inner()).map_err(|e| map_err("profile_error", e))?;
@@ -120,7 +138,9 @@ pub fn connect_rotor(
     // Best-effort: prime the watchdog/last position; ignore an initial timeout.
     let _ = rotor.read_position();
 
-    let status = status_of(Some(&rotor));
+    // A fresh connection starts driving (not paused).
+    auto.paused.store(false, Ordering::Relaxed);
+    let status = status_of(Some(&rotor), auto.is_paused());
     *lock(&conn)? = Some(rotor);
     Ok(status)
 }
@@ -159,34 +179,75 @@ pub fn rotor_read_position(
     })
 }
 
-/// Halt all motion (fail-safe).
+/// Halt all motion (fail-safe / emergency stop). Also pauses auto-track so the
+/// loop does not immediately re-drive the rotor.
 #[tauri::command]
-pub fn rotor_stop(conn: State<'_, RotorConnection>) -> Result<(), CommandError> {
+pub fn rotor_stop(
+    conn: State<'_, RotorConnection>,
+    auto: State<'_, AutoTrack>,
+) -> Result<(), CommandError> {
+    auto.paused.store(true, Ordering::Relaxed);
     with_connected(&conn, |rotor| {
         rotor.halt().map_err(|e| map_err("rotor_stop_failed", e))
     })
 }
 
-/// Connection + watchdog status without touching the wire.
+/// Pause auto-track: the loop holds the rotor in place.
 #[tauri::command]
-pub fn rotor_status(conn: State<'_, RotorConnection>) -> Result<RotorStatusDto, CommandError> {
-    let guard = lock(&conn)?;
-    Ok(status_of(guard.as_ref()))
+pub fn rotor_pause(auto: State<'_, AutoTrack>) -> Result<(), CommandError> {
+    auto.paused.store(true, Ordering::Relaxed);
+    Ok(())
 }
 
-fn status_of(rotor: Option<&SerialRotorPort>) -> RotorStatusDto {
+/// Resume auto-track: the loop drives the rotor to the live satellite again.
+#[tauri::command]
+pub fn rotor_resume(auto: State<'_, AutoTrack>) -> Result<(), CommandError> {
+    auto.paused.store(false, Ordering::Relaxed);
+    Ok(())
+}
+
+/// Send the rotor to its park position (from the profile) and pause auto-track.
+#[tauri::command]
+pub fn rotor_park(
+    conn: State<'_, RotorConnection>,
+    auto: State<'_, AutoTrack>,
+) -> Result<(), CommandError> {
+    auto.paused.store(true, Ordering::Relaxed);
+    with_connected(&conn, |rotor| {
+        let profile = rotor.profile();
+        let az_deg = profile.az.as_ref().map(|a| a.park_deg).unwrap_or(0.0);
+        let el_deg = profile.el.as_ref().map(|a| a.park_deg).unwrap_or(0.0);
+        rotor
+            .goto(RotorPosition { az_deg, el_deg })
+            .map_err(|e| map_err("rotor_park_failed", e))
+    })
+}
+
+/// Connection + watchdog status without touching the wire.
+#[tauri::command]
+pub fn rotor_status(
+    conn: State<'_, RotorConnection>,
+    auto: State<'_, AutoTrack>,
+) -> Result<RotorStatusDto, CommandError> {
+    let guard = lock(&conn)?;
+    Ok(status_of(guard.as_ref(), auto.is_paused()))
+}
+
+fn status_of(rotor: Option<&SerialRotorPort>, auto_track_paused: bool) -> RotorStatusDto {
     match rotor {
         None => RotorStatusDto {
             connected: false,
             alive: false,
             rotor_name: None,
             last_position: None,
+            auto_track_paused,
         },
         Some(r) => RotorStatusDto {
             connected: true,
             alive: r.is_alive(),
             rotor_name: Some(r.profile().name.clone()),
             last_position: r.last_position().map(RotorPositionDto::from),
+            auto_track_paused,
         },
     }
 }

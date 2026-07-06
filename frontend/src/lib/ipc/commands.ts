@@ -514,6 +514,8 @@ export interface RotorStatus {
   alive: boolean;
   rotorName: string | null;
   lastPosition: RotorPosition | null;
+  /** Auto-track paused (ADR 0013 D2) — the loop holds instead of driving. */
+  autoTrackPaused: boolean;
 }
 
 /** Host serial ports for the connect dropdown. */
@@ -548,4 +550,19 @@ export async function rotorStop(): Promise<void> {
 /** Connection + watchdog status without touching the wire. */
 export async function rotorStatus(): Promise<RotorStatus> {
   return invoke<RotorStatus>('rotor_status');
+}
+
+/** Pause auto-track — the loop holds the rotor in place (ADR 0013 D2). */
+export async function rotorPause(): Promise<void> {
+  await invoke('rotor_pause');
+}
+
+/** Resume auto-track — the loop drives the rotor to the live satellite again. */
+export async function rotorResume(): Promise<void> {
+  await invoke('rotor_resume');
+}
+
+/** Send the rotor to its park position and pause auto-track. */
+export async function rotorPark(): Promise<void> {
+  await invoke('rotor_park');
 }

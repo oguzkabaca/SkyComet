@@ -20,17 +20,24 @@ const PHASE_LABEL: Record<PassPhase, string> = {
   below_horizon: 'Below Horizon',
 };
 
+interface LookAngle {
+  azimuthDeg: number;
+  elevationDeg: number;
+}
+
 interface Props {
   norad: number | null;
   snapshot: TrackingSnapshot | null;
   observer: Location | null;
+  rotorActual?: LookAngle | null;
+  rotorTarget?: LookAngle | null;
 }
 
 /**
  * Region 2 — the main visual. Polar sky view is primary (live); the ground map
  * is a contextual tab. The two are never shown at equal size (brief §5).
  */
-export function TrackingVisual({ norad, snapshot, observer }: Props) {
+export function TrackingVisual({ norad, snapshot, observer, rotorActual, rotorTarget }: Props) {
   const [tab, setTab] = useState<Tab>('sky');
   // Pass track for the sky view, keyed by norad (no synchronous setState).
   const [track, setTrack] = useState<{ norad: number; samples: PassSample[] } | null>(null);
@@ -81,7 +88,13 @@ export function TrackingVisual({ norad, snapshot, observer }: Props) {
           norad === null ? (
             <div className={styles.empty}>Select a satellite to see its sky track.</div>
           ) : (
-            <PolarPlot samples={samples} size={340} live={live} />
+            <PolarPlot
+              samples={samples}
+              size={340}
+              live={live}
+              rotorActual={rotorActual}
+              rotorTarget={rotorTarget}
+            />
           )
         ) : (
           <GroundMapView norad={norad} observer={observer} />
