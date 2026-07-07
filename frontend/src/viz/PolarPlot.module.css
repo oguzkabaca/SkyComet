@@ -9,6 +9,16 @@
   border-radius: var(--r-md);
 }
 
+/* Fill a square wrapper (Quick Track): the wrapper caps by width AND height,
+   so the plot never overflows a short viewport. */
+.plotFill {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  aspect-ratio: auto;
+  margin: 0;
+}
+
 .label {
   fill: var(--fg-dim);
   font-size: 11px;

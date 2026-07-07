@@ -109,8 +109,8 @@ export function RFProfileSelector({ norad, value, onChange, disabled }: Props) {
     triggerBody = (
       <span className={styles.triggerValue}>
         <span className={styles.triggerName}>
-          {profileName(selected)}
-          {autoSelected && <span className={styles.autoTag}>Auto-selected</span>}
+          <span className={styles.triggerNameText}>{profileName(selected)}</span>
+          {autoSelected && <span className={styles.autoTag}>Auto</span>}
         </span>
         <span className={styles.triggerFreq}>
           RX {fmtBand(selected.downlinkLowHz, selected.downlinkHighHz)}

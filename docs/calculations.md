@@ -323,6 +323,9 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 - **Sanity:** az=0 → (0, −r) N; az=90 → (−r, 0) **E left**; az=180 → (0, r) S; az=270 → (r, 0) **W right**.
 - **Rationale:** Heavens-Above, GPredict, SatPC32, Orbitron, and planetarium software use sky-view. The amateur-radio workflow cross-checks with this software, so ecosystem alignment was chosen. Map-view (E right, compass convention) is **equally valid** but not the default in SkyComet.
 - **Direction labels:** N (top), E (left), S (bottom), W (right). Elevation rings at 30° and 60° radii.
+- **Runtime toggle (2026-07-07, B-001):** the Quick Track sky view exposes a per-view Sky/Map
+  switch (`PolarPlot` `view` prop, persisted in localStorage). It flips only the x sign
+  (`xSign = -1` sky, `+1` map) and swaps the E/W labels; the sky-view sign stays the canon default.
 - **Added:** F4. **Status:** active (v2, switched to sky-view 2026-05-27). **Old:** v1 map-view (E right) — changed as a convention preference.
 
 ### 5.8 Atmospheric refraction

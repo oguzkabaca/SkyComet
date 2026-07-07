@@ -16,6 +16,7 @@
 
 .opsText {
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
@@ -48,6 +49,7 @@
 .controls {
   display: flex;
   align-items: flex-end;
+  justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;
 }

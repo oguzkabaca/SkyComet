@@ -2,59 +2,61 @@
   position: relative;
 }
 
+/* Compact, same height as the selectors next to it — a single subtle row, not
+   a chunky block. The classification color lives on the level text (§14). */
 .badge {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  min-width: 88px;
-  padding: 5px 12px;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 12px;
   background: var(--bg-panel-2);
   border: 1px solid var(--border);
-  border-left-width: 3px;
   border-radius: var(--r-sm);
   cursor: pointer;
   font-family: var(--font-ui);
 }
 
+/* Keep the number and its /100 on a shared baseline within the centered row. */
+.score {
+  display: inline-flex;
+  align-items: baseline;
+}
+
 .score {
   font-family: var(--font-mono);
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 500;
   line-height: 1;
   color: var(--fg);
 }
 
 .outOf {
-  font-size: 11px;
+  margin-left: 1px;
+  font-size: 10px;
   color: var(--fg-dim);
 }
 
 .level {
   font-size: 11px;
-  color: var(--fg-dim);
 }
 
-/* Classification → left-border accent (brief §4 / §14 color logic). */
-.overhead {
-  border-left-color: var(--ok);
-}
-
+/* Classification → level color (brief §4 / §14 color logic). */
+.overhead,
 .good {
-  border-left-color: var(--ok);
+  color: var(--ok);
 }
 
 .marginal {
-  border-left-color: var(--warn);
+  color: var(--warn);
 }
 
 .poor {
-  border-left-color: var(--danger);
+  color: var(--danger);
 }
 
 .none {
-  border-left-color: var(--border-strong);
-  cursor: default;
+  color: var(--fg-dim);
 }
 
 /* --- popover ------------------------------------------------------------- */

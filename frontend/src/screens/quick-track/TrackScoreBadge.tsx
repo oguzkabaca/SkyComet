@@ -66,16 +66,17 @@ export function TrackScoreBadge({ norad }: Props) {
     <div className={styles.root} ref={rootRef}>
       <button
         type="button"
-        className={`${styles.badge} ${cls}`}
+        className={styles.badge}
         onClick={() => pass && setOpen((o) => !o)}
         aria-expanded={open}
+        title="Track score"
       >
         <span className={styles.score}>
           {/* Pass.score is a [0,1] quality (canon §5.5); show it out of 100. */}
           {loading ? '…' : pass ? Math.round(pass.score * 100) : '—'}
           {pass && <span className={styles.outOf}>/100</span>}
         </span>
-        <span className={styles.level}>{loading ? 'Loading' : level}</span>
+        <span className={`${styles.level} ${cls}`}>{loading ? 'Loading' : level}</span>
       </button>
 
       {open && pass && (

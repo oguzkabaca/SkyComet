@@ -177,6 +177,54 @@ fn snapshot_from_parts(
     })
 }
 
+/// A satellite currently above the observer's horizon (for the Quick Track
+/// "Visible now" list). Az/el at the query instant.
+#[derive(Debug, Clone, Serialize)]
+pub struct VisibleSatellite {
+    pub norad_id: u32,
+    pub name: String,
+    pub azimuth_deg: f64,
+    pub elevation_deg: f64,
+}
+
+/// Every TLE-backed satellite whose elevation is ≥ 0° right now, sorted by
+/// elevation (highest first). One propagation per satellite — cheap enough for
+/// the on-demand selector list; no location configured yields an empty list.
+pub fn visible_satellites(
+    db: &Database,
+    cache: &TleCache,
+    now: DateTime<Utc>,
+) -> Result<Vec<VisibleSatellite>, TrackingError> {
+    let Some(observer) = location::load_location(db)? else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for (norad, name) in super::tle::repo::list_summaries(db)? {
+        let Some(record) = cache.get_or_load(db, norad)? else {
+            continue;
+        };
+        let Ok(propagator) = Propagator::from_tle(&record) else {
+            continue;
+        };
+        let Ok(state) = propagator.propagate_at(now) else {
+            continue;
+        };
+        let Ok(az_el) = teme_to_az_el(state.position_km, now, &observer) else {
+            continue;
+        };
+        if az_el.elevation_deg >= 0.0 && az_el.elevation_deg.is_finite() {
+            out.push(VisibleSatellite {
+                norad_id: norad,
+                name,
+                azimuth_deg: az_el.azimuth_deg,
+                elevation_deg: az_el.elevation_deg,
+            });
+        }
+    }
+    out.sort_by(|a, b| b.elevation_deg.total_cmp(&a.elevation_deg));
+    Ok(out)
+}
+
 /// Slant range (km) to the satellite at `t` — helper for the range-rate central
 /// difference in `snapshot_from_parts`.
 fn slant_range_km(
@@ -303,6 +351,35 @@ mod tests {
             r_after > r_before,
             "range-rate sign disagrees with range trend"
         );
+    }
+
+    #[test]
+    fn visible_satellites_needs_location() {
+        let db = Database::open_in_memory().unwrap();
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        tle_repo_test::upsert(&db, &rec, "test").unwrap();
+        let cache = TleCache::new();
+        // No location saved → empty list, not an error.
+        let list = visible_satellites(&db, &cache, Utc::now()).unwrap();
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn visible_satellites_are_above_horizon_and_sorted() {
+        let db = Database::open_in_memory().unwrap();
+        location::save_location(&db, &Location::new(41.0082, 28.9784, 35.0).unwrap()).unwrap();
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        tle_repo_test::upsert(&db, &rec, "test").unwrap();
+        let cache = TleCache::new();
+        // Whatever the instant, every entry is above the horizon and the list is
+        // sorted by elevation descending.
+        let list = visible_satellites(&db, &cache, rec.epoch).unwrap();
+        for w in list.windows(2) {
+            assert!(w[0].elevation_deg >= w[1].elevation_deg);
+        }
+        for v in &list {
+            assert!(v.elevation_deg >= 0.0);
+        }
     }
 
     #[test]

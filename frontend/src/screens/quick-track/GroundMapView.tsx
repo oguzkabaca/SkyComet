@@ -18,18 +18,25 @@ export function GroundMapView({ norad, observer }: Props) {
   // Keyed by norad so a stale track never shows for another satellite.
   const [fetched, setFetched] = useState<{ norad: number; track: GroundTrack } | null>(null);
 
+  // Refresh periodically so the sub-point and footprint advance with the
+  // satellite; the track window recenters on "now" each fetch.
   useEffect(() => {
     if (norad === null) return;
     let cancelled = false;
-    getGroundTrack(norad)
-      .then((track) => {
-        if (!cancelled) setFetched({ norad, track });
-      })
-      .catch(() => {
-        if (!cancelled) setFetched(null);
-      });
+    const load = () => {
+      getGroundTrack(norad)
+        .then((track) => {
+          if (!cancelled) setFetched({ norad, track });
+        })
+        .catch(() => {
+          if (!cancelled) setFetched(null);
+        });
+    };
+    load();
+    const id = setInterval(load, 10000);
     return () => {
       cancelled = true;
+      clearInterval(id);
     };
   }, [norad]);
 

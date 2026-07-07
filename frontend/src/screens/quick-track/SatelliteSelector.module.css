@@ -1,6 +1,11 @@
 .root {
   position: relative;
-  min-width: 260px;
+  flex: none;
+  width: 260px;
+}
+
+.triggerValue {
+  overflow: hidden;
 }
 
 .trigger {

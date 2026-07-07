@@ -14,31 +14,49 @@ interface Props {
   /** Rotor actual (triangle) and target (outer ring) look angles (M4). */
   rotorActual?: LookAngle | null;
   rotorTarget?: LookAngle | null;
+  /** Fill the parent (a square wrapper caps it) instead of the default cap. */
+  fill?: boolean;
+  /** Projection convention (canon §5.7): 'sky' (default) or 'map'. */
+  view?: PolarView;
 }
 
+/** Convention (canon §5.7): sky-view (E left, default) or map-view (E right). */
+type PolarView = 'sky' | 'map';
+
 /**
- * Polar plot projection — sky-view convention (canon: docs/calculations.md §5.7).
- * Zenith at center, horizon at outer ring, N up, **E left, W right** — as seen
- * by an observer lying on their back facing the sky. Matches Heavens-Above,
- * GPredict, SatPC32, Orbitron.
+ * Polar plot projection (canon: docs/calculations.md §5.7). Zenith at center,
+ * horizon at outer ring, N up. Sky-view (default) puts **E left, W right** — as
+ * seen by an observer on their back facing the sky (Heavens-Above / GPredict /
+ * SatPC32). Map-view mirrors the E-W axis (E right, compass convention).
  *
- * INVARIANT: x = -r·sin(az), y = -r·cos(az). DO NOT CHANGE (knowledge/ui.md F4).
+ * INVARIANT: the sky-view sign is x = -r·sin(az) — DO NOT CHANGE it
+ * (knowledge/ui.md F4). Map-view is the mirror `xSign = +1`; y is unchanged.
  */
-function project(azimuthDeg: number, elevationDeg: number, radius: number) {
+function project(azimuthDeg: number, elevationDeg: number, radius: number, xSign: number) {
   const rNorm = Math.max(0, (90 - elevationDeg) / 90);
   const az = (azimuthDeg * Math.PI) / 180;
-  const x = -radius * rNorm * Math.sin(az);
+  const x = xSign * radius * rNorm * Math.sin(az);
   const y = -radius * rNorm * Math.cos(az);
   return { x, y };
 }
 
-export function PolarPlot({ samples, size = 300, live, rotorActual, rotorTarget }: Props) {
+export function PolarPlot({
+  samples,
+  size = 300,
+  live,
+  rotorActual,
+  rotorTarget,
+  fill,
+  view = 'sky',
+}: Props) {
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - 24;
+  // Sky-view keeps the canon sign (x = -r·sin); map-view mirrors it (§5.7).
+  const xSign = view === 'map' ? 1 : -1;
 
   function at(look: LookAngle) {
-    const p = project(look.azimuthDeg, look.elevationDeg, r);
+    const p = project(look.azimuthDeg, look.elevationDeg, r, xSign);
     return { cx: cx + p.x, cy: cy + p.y };
   }
   const liveP = live && live.elevationDeg >= 0 ? at(live) : null;
@@ -52,7 +70,7 @@ export function PolarPlot({ samples, size = 300, live, rotorActual, rotorTarget 
 
   const trace = samples
     .map((s) => {
-      const p = project(s.azimuthDeg, s.elevationDeg, r);
+      const p = project(s.azimuthDeg, s.elevationDeg, r, xSign);
       return `${cx + p.x},${cy + p.y}`;
     })
     .join(' ');
@@ -66,7 +84,7 @@ export function PolarPlot({ samples, size = 300, live, rotorActual, rotorTarget 
   const tca = samples[tcaIdx];
 
   function projectPoint(s: PassSample) {
-    const p = project(s.azimuthDeg, s.elevationDeg, r);
+    const p = project(s.azimuthDeg, s.elevationDeg, r, xSign);
     return { cx: cx + p.x, cy: cy + p.y };
   }
 
@@ -75,7 +93,7 @@ export function PolarPlot({ samples, size = 300, live, rotorActual, rotorTarget 
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      className={styles.plot}
+      className={fill ? `${styles.plot} ${styles.plotFill}` : styles.plot}
       role="img"
       aria-label="polar plot"
     >
@@ -97,13 +115,13 @@ export function PolarPlot({ samples, size = 300, live, rotorActual, rotorTarget 
         N
       </text>
       <text x={cx - r - 12} y={cy + 4} textAnchor="middle" className={styles.label}>
-        E
+        {view === 'map' ? 'W' : 'E'}
       </text>
       <text x={cx} y={cy + r + 16} textAnchor="middle" className={styles.label}>
         S
       </text>
       <text x={cx + r + 12} y={cy + 4} textAnchor="middle" className={styles.label}>
-        W
+        {view === 'map' ? 'E' : 'W'}
       </text>
       {elevationRings.slice(1).map((ring) => (
         <text key={`l-${ring.label}`} x={cx + 4} y={cy - ring.r + 12} className={styles.elev}>

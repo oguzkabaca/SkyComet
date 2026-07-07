@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
 
 import { SegmentedControl } from '../../components/SegmentedControl';
-import {
-  getPassTrack,
-  listPasses,
-  type Location,
-  type PassSample,
-} from '../../lib/ipc/commands';
+import { getPassTrack, listPasses, type PassSample } from '../../lib/ipc/commands';
 import type { PassPhase, TrackingSnapshot } from '../../lib/ipc/events';
 import { PolarPlot } from '../../viz/PolarPlot';
-import { GroundMapView } from './GroundMapView';
 import styles from './TrackingVisual.module.css';
 
-type Tab = 'sky' | 'ground';
+type PolarView = 'sky' | 'map';
+
+const VIEW_KEY = 'skycomet.quickTrack.polarView';
+
+function readView(): PolarView {
+  return localStorage.getItem(VIEW_KEY) === 'map' ? 'map' : 'sky';
+}
 
 const PHASE_LABEL: Record<PassPhase, string> = {
   approaching: 'Approaching',
@@ -28,19 +28,24 @@ interface LookAngle {
 interface Props {
   norad: number | null;
   snapshot: TrackingSnapshot | null;
-  observer: Location | null;
   rotorActual?: LookAngle | null;
   rotorTarget?: LookAngle | null;
 }
 
 /**
- * Region 2 — the main visual. Polar sky view is primary (live); the ground map
- * is a contextual tab. The two are never shown at equal size (brief §5).
+ * Sky view — the primary operational visual (brief §5). Polar sky plot with the
+ * live satellite marker and rotor actual/target; the ground map is a separate
+ * full-width section below. Compact live AZ/EL sits above the plot.
  */
-export function TrackingVisual({ norad, snapshot, observer, rotorActual, rotorTarget }: Props) {
-  const [tab, setTab] = useState<Tab>('sky');
-  // Pass track for the sky view, keyed by norad (no synchronous setState).
+export function TrackingVisual({ norad, snapshot, rotorActual, rotorTarget }: Props) {
+  // Pass track for the plot, keyed by norad (no synchronous setState).
   const [track, setTrack] = useState<{ norad: number; samples: PassSample[] } | null>(null);
+  // Projection convention (canon §5.7), persisted across sessions.
+  const [view, setView] = useState<PolarView>(readView);
+
+  useEffect(() => {
+    localStorage.setItem(VIEW_KEY, view);
+  }, [view]);
 
   useEffect(() => {
     if (norad === null) return;
@@ -60,19 +65,21 @@ export function TrackingVisual({ norad, snapshot, observer, rotorActual, rotorTa
   }, [norad]);
 
   const samples = track && track.norad === norad ? track.samples : [];
-  const live = snapshot ? { azimuthDeg: snapshot.azimuth_deg, elevationDeg: snapshot.elevation_deg } : null;
+  const live = snapshot
+    ? { azimuthDeg: snapshot.azimuth_deg, elevationDeg: snapshot.elevation_deg }
+    : null;
 
   return (
     <div className={styles.root}>
       <div className={styles.bar}>
-        <SegmentedControl<Tab>
-          ariaLabel="Visual mode"
+        <SegmentedControl<PolarView>
+          ariaLabel="Polar view convention"
           options={[
-            { value: 'sky', label: 'Sky View' },
-            { value: 'ground', label: 'Ground Map' },
+            { value: 'sky', label: 'Sky' },
+            { value: 'map', label: 'Map' },
           ]}
-          value={tab}
-          onChange={setTab}
+          value={view}
+          onChange={setView}
         />
         {snapshot && (
           <div className={styles.live}>
@@ -84,20 +91,20 @@ export function TrackingVisual({ norad, snapshot, observer, rotorActual, rotorTa
       </div>
 
       <div className={styles.stage}>
-        {tab === 'sky' ? (
-          norad === null ? (
-            <div className={styles.empty}>Select a satellite to see its sky track.</div>
-          ) : (
+        {norad === null ? (
+          <div className={styles.empty}>Select a satellite to see its sky track.</div>
+        ) : (
+          <div className={styles.polarWrap}>
             <PolarPlot
               samples={samples}
-              size={340}
+              size={420}
               live={live}
               rotorActual={rotorActual}
               rotorTarget={rotorTarget}
+              view={view}
+              fill
             />
-          )
-        ) : (
-          <GroundMapView norad={norad} observer={observer} />
+          </div>
         )}
       </div>
     </div>

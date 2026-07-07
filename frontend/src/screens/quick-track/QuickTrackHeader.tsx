@@ -1,5 +1,9 @@
 import { Button } from '../../components/Button';
-import type { FrequencyRecord, SatelliteSummary } from '../../lib/ipc/commands';
+import type {
+  FrequencyRecord,
+  SatelliteSummary,
+  VisibleSatellite,
+} from '../../lib/ipc/commands';
 import { RFProfileSelector, type RFSelection } from './RFProfileSelector';
 import { SatelliteSelector } from './SatelliteSelector';
 import { TrackScoreBadge } from './TrackScoreBadge';
@@ -9,6 +13,7 @@ import styles from './QuickTrackHeader.module.css';
 
 interface Props {
   satellites: SatelliteSummary[];
+  visible: VisibleSatellite[];
   selectedSat: SatelliteSummary | null;
   onSelectSat: (s: SatelliteSummary) => void;
   favorites: Set<number>;
@@ -34,6 +39,7 @@ interface Props {
 export function QuickTrackHeader(props: Props) {
   const {
     satellites,
+    visible,
     selectedSat,
     onSelectSat,
     favorites,
@@ -56,21 +62,9 @@ export function QuickTrackHeader(props: Props) {
       <div className={styles.topRow}>
         <div className={styles.opsText}>
           <span className={styles.eyebrow}>Live tracking</span>
-          {tracking && selectedSat ? (
-            <>
-              <h1 className={styles.title}>Tracking {selectedSat.name}</h1>
-              <p className={styles.sub}>
-                {rfLabel ? `${rfLabel} · ` : ''}NORAD {selectedSat.norad_id}
-              </p>
-            </>
-          ) : (
-            <>
-              <h1 className={styles.title}>Quick Track</h1>
-              <p className={styles.sub}>
-                Track a satellite using the current station, rotor and radio configuration.
-              </p>
-            </>
-          )}
+          <h1 className={styles.title}>
+            {tracking && selectedSat ? `Tracking ${selectedSat.name}` : 'Quick Track'}
+          </h1>
         </div>
 
         <div className={styles.controls}>
@@ -85,6 +79,7 @@ export function QuickTrackHeader(props: Props) {
             <>
               <SatelliteSelector
                 satellites={satellites}
+                visible={visible}
                 value={selectedSat}
                 onChange={onSelectSat}
                 favorites={favorites}
@@ -105,6 +100,12 @@ export function QuickTrackHeader(props: Props) {
           )}
         </div>
       </div>
+
+      <p className={styles.sub}>
+        {tracking && selectedSat
+          ? `${rfLabel ? `${rfLabel} · ` : ''}NORAD ${selectedSat.norad_id}`
+          : 'Track a satellite using the current station, rotor and radio configuration.'}
+      </p>
 
       <TrackingReadinessBar stationReady={stationReady} rotorConnected={rotorConnected} />
     </header>

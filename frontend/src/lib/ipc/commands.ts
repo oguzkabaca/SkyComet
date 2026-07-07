@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import type { TrackingSnapshot } from './events';
+
 export interface Location {
   latitude_deg: number;
   longitude_deg: number;
@@ -88,6 +90,23 @@ export async function stopTracking(): Promise<void> {
 
 export async function getLastActiveNorad(): Promise<number | null> {
   return invoke<number | null>('get_last_active_norad');
+}
+
+/** One-shot snapshot (preview) for a satellite without starting the tracking loop. */
+export async function getTrackingSnapshot(norad: number): Promise<TrackingSnapshot> {
+  return invoke<TrackingSnapshot>('get_tracking_snapshot', { norad });
+}
+
+export interface VisibleSatellite {
+  norad_id: number;
+  name: string;
+  azimuth_deg: number;
+  elevation_deg: number;
+}
+
+/** Satellites currently above the horizon, highest elevation first. */
+export async function listVisibleSatellites(): Promise<VisibleSatellite[]> {
+  return invoke<VisibleSatellite[]>('list_visible_satellites');
 }
 
 export type PassClassification = 'overhead' | 'good' | 'marginal' | 'poor';

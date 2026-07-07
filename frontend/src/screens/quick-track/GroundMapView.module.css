@@ -1,14 +1,12 @@
 .wrap {
-  flex: 1;
+  width: 100%;
   min-width: 0;
-  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px;
 }
 
+/* Span the full width here (override WorldMap's centered 720px cap). */
 .wrap :global(svg) {
   width: 100%;
   height: auto;
+  max-width: none;
 }

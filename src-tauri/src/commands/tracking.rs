@@ -7,7 +7,9 @@ use super::location::CommandError;
 use crate::core::db::Database;
 use crate::core::tle::cache::TleCache;
 use crate::core::tle::repo as tle_repo;
-use crate::core::tracking::{self, TrackingError, TrackingState};
+use crate::core::tracking::{
+    self, TrackingError, TrackingSnapshot, TrackingState, VisibleSatellite,
+};
 
 #[derive(Debug, Serialize)]
 pub struct SatelliteSummary {
@@ -85,4 +87,29 @@ pub fn get_last_active_norad(db: State<'_, Database>) -> Result<Option<u32>, Com
         code: "storage_error".into(),
         message: e.to_string(),
     })
+}
+
+/// One-shot snapshot for a satellite without activating the tracking loop.
+/// Powers the Quick Track preview: selecting a satellite shows its live look
+/// angles before Start Tracking (which drives the rotor and persists state).
+#[tauri::command]
+pub fn get_tracking_snapshot(
+    db: State<'_, Database>,
+    cache: State<'_, Arc<TleCache>>,
+    norad: u32,
+) -> Result<TrackingSnapshot, CommandError> {
+    tracking::compute_snapshot(db.inner(), cache.inner(), norad, chrono::Utc::now())
+        .map_err(CommandError::from)
+}
+
+/// Satellites currently above the observer's horizon, highest elevation first.
+/// Powers the Quick Track selector's "Visible now" group. Empty when no location
+/// is configured.
+#[tauri::command]
+pub fn list_visible_satellites(
+    db: State<'_, Database>,
+    cache: State<'_, Arc<TleCache>>,
+) -> Result<Vec<VisibleSatellite>, CommandError> {
+    tracking::visible_satellites(db.inner(), cache.inner(), chrono::Utc::now())
+        .map_err(CommandError::from)
 }

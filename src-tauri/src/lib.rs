@@ -67,6 +67,8 @@ pub fn run() {
             commands::tracking::start_tracking,
             commands::tracking::stop_tracking,
             commands::tracking::get_last_active_norad,
+            commands::tracking::get_tracking_snapshot,
+            commands::tracking::list_visible_satellites,
             commands::passes::list_passes,
             commands::passes::get_pass_track,
             commands::catalog::list_satellites_page,

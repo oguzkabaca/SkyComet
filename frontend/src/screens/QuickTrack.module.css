@@ -9,7 +9,8 @@
   margin: -20px -24px;
 }
 
-/* Four regions stacked: ops bar · (alerts) · main · health strip. */
+/* Stacked regions: ops bar · (alerts) · main (sky | cards) · timeline · ground
+   map · health. The panel scrolls when the ground map pushes past the viewport. */
 .panel {
   flex: 1;
   min-height: 0;
@@ -19,7 +20,7 @@
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--sh-1);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 /* Region 1 (top operations bar) lives in QuickTrackHeader.module.css. */
@@ -31,15 +32,14 @@
   padding: 12px 20px 0;
 }
 
-/* --- Regions 2 + 3: left visual (~60%) | right live column (~40%) --------- */
+/* --- Main: narrow sky view (left) | wide live-card grid (right) ----------- */
 .main {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: 420px;
   display: grid;
-  grid-template-columns: 3fr 2fr;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
   gap: 16px;
   padding: 16px 20px;
-  overflow: hidden;
 }
 
 .visual {
@@ -53,13 +53,16 @@
   overflow: hidden;
 }
 
+/* Cards flow into as many columns as the widened right region allows and
+   stretch to fill the sky-view height (tops align with the live azimuth). */
 .side {
   min-width: 0;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-auto-rows: 1fr;
+  align-content: stretch;
   gap: 14px;
-  overflow-y: auto;
 }
 
 /* --- Region 4a: full-width pass timeline ---------------------------------- */
@@ -69,7 +72,25 @@
   border-top: 1px solid var(--border-soft);
 }
 
-/* --- Region 4b: bottom system health strip -------------------------------- */
+/* --- Full-width ground map (contextual, below the main region) ------------ */
+.ground {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.groundTitle {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+/* --- Bottom system health strip ------------------------------------------- */
 .health {
   flex: none;
   display: flex;
@@ -80,11 +101,15 @@
   background: var(--bg-panel-2);
 }
 
-/* --- Responsive: stack side column below the visual (brief §15) ---------- */
+/* --- Responsive: stack sky view over the cards (brief §15) ---------------- */
 @media (max-width: 900px) {
   .main {
     grid-template-columns: 1fr;
     grid-auto-rows: min-content;
-    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .visual {
+    min-height: 320px;
   }
 }
