@@ -104,14 +104,18 @@ pub fn list_passes(
         })?;
     let propagator = Propagator::from_tle(&record).map_err(|e| map_err("orbit_error", e))?;
     let hours = hours_ahead.unwrap_or(pp_params::HOURS_AHEAD_DEFAULT as u32) as i64;
-    let from = Utc::now();
-    let until = from + Duration::hours(hours);
+    let now = Utc::now();
+    let until = now + Duration::hours(hours);
     let search = PassSearchParams {
         min_elevation_deg: min_elevation_deg.unwrap_or(pp_params::DEFAULT_MIN_ELEVATION_DEG),
         coarse_step_sec: pp_params::COARSE_STEP_SEC,
     };
-    let passes = pass_planner::find_passes(&propagator, &observer, from, until, search)
-        .map_err(|e| map_err("orbit_error", e))?;
+    // Overlapping window (canon §5.2 sliding-window note): a satellite above
+    // the horizon right now must list its in-progress pass first, otherwise
+    // the Quick Track timeline/trace point at an unrelated future pass.
+    let passes =
+        pass_planner::find_passes_overlapping_now(&propagator, &observer, now, until, search)
+            .map_err(|e| map_err("orbit_error", e))?;
     Ok(passes.into_iter().map(PassDto::from).collect())
 }
 

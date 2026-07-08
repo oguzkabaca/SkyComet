@@ -10,6 +10,9 @@ type PolarView = 'sky' | 'map';
 
 const VIEW_KEY = 'skycomet.quickTrack.polarView';
 
+/** Refetch cadence — the trace rolls to the next pass after LOS. */
+const TRACK_REFRESH_MS = 60_000;
+
 function readView(): PolarView {
   return localStorage.getItem(VIEW_KEY) === 'map' ? 'map' : 'sky';
 }
@@ -50,17 +53,24 @@ export function TrackingVisual({ norad, snapshot, rotorActual, rotorTarget }: Pr
   useEffect(() => {
     if (norad === null) return;
     let cancelled = false;
-    listPasses(norad)
-      .then(async (passes) => {
-        const p = passes[0];
-        const samples = p ? await getPassTrack(norad, p) : [];
-        if (!cancelled) setTrack({ norad, samples });
-      })
-      .catch(() => {
-        if (!cancelled) setTrack({ norad, samples: [] });
-      });
+    const load = () => {
+      listPasses(norad)
+        .then(async (passes) => {
+          const p = passes[0];
+          const samples = p ? await getPassTrack(norad, p) : [];
+          if (!cancelled) setTrack({ norad, samples });
+        })
+        .catch(() => {
+          if (!cancelled) setTrack({ norad, samples: [] });
+        });
+    };
+    load();
+    // Periodic refetch: the drawn trace otherwise froze on the first-fetched
+    // pass and never rolled over after LOS.
+    const id = setInterval(load, TRACK_REFRESH_MS);
     return () => {
       cancelled = true;
+      clearInterval(id);
     };
   }, [norad]);
 

@@ -30,6 +30,11 @@ pub mod params {
     pub const POLAR_SAMPLE_STEP_SEC: i64 = 5;
     /// Default look-ahead window when callers don't override.
     pub const HOURS_AHEAD_DEFAULT: i64 = 24;
+    /// Look-back from "now" so a pass already in progress is found with its
+    /// real AOS instead of being dropped by the §5.2 half-pass rule. Covers
+    /// LEO/MEO pass durations; a satellite above the horizon longer than this
+    /// (e.g. GEO) still has no AOS in the window and stays dropped.
+    pub const PASS_LOOKBACK_MINUTES: i64 = 30;
     /// Duration above which the score's duration factor saturates at 1.0.
     pub const SCORE_DURATION_SATURATE_SEC: f64 = 600.0;
     /// 90° × 90°; normalizes the elevation-squared term to [0, 1].
@@ -150,6 +155,24 @@ pub fn find_passes(
         t += step;
     }
 
+    Ok(passes)
+}
+
+/// Passes overlapping `[now, until]`: like `find_passes`, but the scan starts
+/// `params::PASS_LOOKBACK_MINUTES` before `now` so a pass already in progress
+/// keeps its real AOS, and passes that ended before `now` are filtered out
+/// (canon §5.2 sliding-window note). Powers `list_passes` — a "Visible now"
+/// satellite must surface its current pass, not only the next one.
+pub fn find_passes_overlapping_now(
+    propagator: &Propagator,
+    observer: &Location,
+    now: DateTime<Utc>,
+    until: DateTime<Utc>,
+    search: PassSearchParams,
+) -> Result<Vec<Pass>, OrbitError> {
+    let from = now - Duration::minutes(params::PASS_LOOKBACK_MINUTES);
+    let mut passes = find_passes(propagator, observer, from, until, search)?;
+    passes.retain(|p| p.los > now);
     Ok(passes)
 }
 
@@ -527,6 +550,68 @@ mod tests {
             assert!((0.0..360.0).contains(&s.azimuth_deg));
             // Within a pass elevation should be >= -1° (small numerical slack at edges).
             assert!(s.elevation_deg > -1.0);
+        }
+    }
+
+    #[test]
+    fn overlapping_now_keeps_the_in_progress_pass() {
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        let prop = Propagator::from_tle(&rec).unwrap();
+        let from = rec.epoch;
+        let until = from + Duration::hours(24);
+        let baseline =
+            find_passes(&prop, &istanbul(), from, until, PassSearchParams::default()).unwrap();
+        let current = baseline.first().expect("at least one pass");
+
+        // "now" sits mid-pass (TCA): plain find_passes would drop this pass,
+        // the overlapping variant must return it first with its real AOS.
+        let now = current.tca;
+        let passes = find_passes_overlapping_now(
+            &prop,
+            &istanbul(),
+            now,
+            now + Duration::hours(24),
+            PassSearchParams::default(),
+        )
+        .unwrap();
+        let first = passes.first().expect("in-progress pass expected");
+        assert!(
+            (first.aos - current.aos).num_seconds().abs() <= 2,
+            "AOS drifted: {} vs {}",
+            first.aos,
+            current.aos
+        );
+        assert!(first.aos < now && now < first.los, "not the current pass");
+    }
+
+    #[test]
+    fn overlapping_now_drops_passes_already_ended() {
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        let prop = Propagator::from_tle(&rec).unwrap();
+        let from = rec.epoch;
+        let until = from + Duration::hours(24);
+        let baseline =
+            find_passes(&prop, &istanbul(), from, until, PassSearchParams::default()).unwrap();
+        let ended = baseline.first().expect("at least one pass");
+
+        // "now" is just after LOS: the ended pass must not appear even though
+        // it falls inside the look-back scan window.
+        let now = ended.los + Duration::minutes(1);
+        let passes = find_passes_overlapping_now(
+            &prop,
+            &istanbul(),
+            now,
+            now + Duration::hours(24),
+            PassSearchParams::default(),
+        )
+        .unwrap();
+        assert!(passes.iter().all(|p| p.los > now), "ended pass leaked");
+        if let Some(first) = passes.first() {
+            assert!(
+                first.aos >= ended.los,
+                "first pass overlaps the ended one: {:?}",
+                first.aos
+            );
         }
     }
 

@@ -205,6 +205,7 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 | `min_elevation_deg` | 0 | degree | Default is the true horizon; adjustable in the UI (5°–10° amateur practice). A terrain horizon profile is added in F8. |
 | `polar_sample_step` | 5 | s | ~60–180 samples between AOS-LOS, a smooth SVG path. |
 | `hours_ahead_default` | 24 | hour | The roadmap "24h ≥ 4 passes" target. |
+| `pass_lookback_minutes` | 30 | min | `list_passes` sliding window (§5.2 note): scan starts this far before "now" so an in-progress pass keeps its real AOS; covers LEO/MEO pass durations. |
 | `score_duration_saturate` | 600 | s | No extra points above 10 min — fair to a short pass vs an overhead pass. |
 | `score_norm_denominator` | 8100 | — | 90² = 8100 for max_el²; normalizes the score to [0, 1]. |
 | `overhead_threshold` | 70 | degree | An "overhead pass" amateur convention. |
@@ -227,6 +228,12 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 - **Edges:**
   - Elevation already ≥ min at the window start: a half pass; **discarded**.
   - AOS found but the matching LOS is outside the window: a half pass; **discarded**.
+- **Sliding-window note (2026-07-09):** the half-pass rule made `list_passes` drop the pass a
+  "visible now" satellite is currently in, so consumers (Quick Track timeline/trace, score badge)
+  pointed at an unrelated future pass. `find_passes_overlapping_now` scans from
+  `now − pass_lookback_minutes` and filters `los ≤ now`, so an in-progress pass is returned with its
+  real (past) AOS. The core scan/bisection formulas are unchanged; a satellite above the horizon
+  longer than the look-back (e.g. GEO) still has no AOS in the window and stays dropped.
 - **Added:** F4. **Status:** active.
 
 ### 5.3 AOS/LOS bisection

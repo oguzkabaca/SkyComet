@@ -7,6 +7,9 @@ interface Props {
   norad: number | null;
 }
 
+/** Refetch cadence — rolls to the next pass after LOS and tracks TLE refreshes. */
+const PASS_REFRESH_MS = 60_000;
+
 function clock(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
@@ -29,15 +32,22 @@ export function PassTimeline({ norad }: Props) {
   useEffect(() => {
     if (norad === null) return;
     let cancelled = false;
-    listPasses(norad)
-      .then((passes) => {
-        if (!cancelled) setResult({ norad, pass: passes[0] ?? null });
-      })
-      .catch(() => {
-        if (!cancelled) setResult({ norad, pass: null });
-      });
+    const load = () => {
+      listPasses(norad)
+        .then((passes) => {
+          if (!cancelled) setResult({ norad, pass: passes[0] ?? null });
+        })
+        .catch(() => {
+          if (!cancelled) setResult({ norad, pass: null });
+        });
+    };
+    load();
+    // Periodic refetch: without it the timeline froze on the fetched pass —
+    // "Pass ended" forever, never rolling to the next one.
+    const id = setInterval(load, PASS_REFRESH_MS);
     return () => {
       cancelled = true;
+      clearInterval(id);
     };
   }, [norad]);
 
