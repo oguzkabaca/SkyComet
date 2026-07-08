@@ -611,6 +611,7 @@ operator overrides them via Settings → Profile.
 | `search_max_results` | 200 | rows | The UI table shows it comfortably without virtualization; the first 200 are shown even if more match. |
 | `search_min_query_chars` | 1 | character | Even a single character triggers filtering; practical. |
 | `catalog_stale_days` | 30 | day | Frequency + status is stable on the order of weeks; a 30-day "soft" stale threshold for a UI prompt. |
+| `tle_sync_max_age_hours` | 24 | hour | LEO elsets are republished several times a day and SGP4 position error grows fast past ~1 day. Startup auto-sync re-fetches all CelesTrak groups (stations/amateur/weather/visual) when the last TLE sync — or the snapshot seed stamp — is older than this. Distinct from the UI display-stale flag (72 h, SystemHealthBar), which only warns and never fetches. |
 
 ### 7.2 Sub-satellite point (ECEF → geodetic lat/lon)
 
@@ -1191,6 +1192,7 @@ invariants asserted by the `core/tracking.rs` unit tests (not a single fabricate
 ## Change history
 
 - 2026-07-06 — Quick Track redesign (ADR 0013, M3): §7.7 added — satellite footprint (horizon circle) via Earth-central angle λ = acos(R⊕/(R⊕+h)) + spherical destination-point ring; `FOOTPRINT_POINTS_DEFAULT = 72`. Pure `core/orbit/ground_track.rs::footprint_ring`, exposed through `get_ground_track`.
+- 2026-07-08 — Dynamic TLE sync: §7.1 gained `tle_sync_max_age_hours` (24 h) — runtime CelesTrak refresh threshold for `Dataset::Tle` (startup auto-sync + catalog "Sync now" chain). Root cause: TLEs were only ever seeded from the bundled snapshot and aged indefinitely (observed 1000+ h).
 - 2026-07-06 — Quick Track redesign (ADR 0013, M1): §12 added — live tracking snapshot enrichment: range-rate (central difference, Δt = 1 s, §6.2 sign convention), sub-point altitude (§4/§7.2 reuse), pass phase (elevation + range-rate sign). No new propagation model; live Doppler reuses §6.2.
 - 2026-07-06 — Settings sprint (Location screen redesign): §11 added — observer site geometry (horizon dip + range, GEO belt elevation + visibility limit ~81.3°, Maidenhead grid locator); constants R⊕ 6378.137 km, r_geo 42164 km. Pure `core/observer.rs`, exposed via `get_site_analysis`.
 - 2026-07-05 — Settings redesign sprint: §10 added — location detection network constants (ipwho.is 15 s / 64 KiB, system fix 20 s) + validation rules (ADR 0012).

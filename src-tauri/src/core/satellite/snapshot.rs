@@ -87,9 +87,10 @@ pub enum SeedOutcome {
 /// Seed the catalog tables from `snapshot`. Each table is checked
 /// independently — a DB that already has `satellites` but an empty
 /// `satellites_tle` (e.g. upgraded from a v1 snapshot install) still gets
-/// its TLEs seeded. Sets `system_metadata[sync_catalog_last_at] =
-/// snapshot.fetched_at` when the catalog branch fires. Safe to call on
-/// every app launch.
+/// its TLEs seeded. Each branch that fires stamps its own sync key with
+/// `snapshot.fetched_at` (`sync_catalog_last_at` / `sync_tle_last_at`) so
+/// `sync_if_needed` measures staleness from the snapshot build date, not
+/// from the install date. Safe to call on every app launch.
 pub fn seed_if_empty(db: &Database, snapshot: &Snapshot) -> Result<SeedOutcome, CatalogError> {
     let catalog_empty = super::repo::count_satellites(db)? == 0;
     let tle_empty = tle::repo::count(db).map_err(tle_to_catalog_err)? == 0;
@@ -115,7 +116,10 @@ pub fn seed_if_empty(db: &Database, snapshot: &Snapshot) -> Result<SeedOutcome, 
     };
 
     let tle_count = if tle_empty && !snapshot.tle.is_empty() {
-        seed_tle_records(db, snapshot)?
+        let n = seed_tle_records(db, snapshot)?;
+        crate::core::sync::record_sync(db, crate::core::sync::Dataset::Tle, &snapshot.fetched_at)
+            .map_err(|e| CatalogError::SnapshotIo(format!("record tle sync timestamp: {e}")))?;
+        n
     } else {
         0
     };
@@ -327,6 +331,13 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(stored.to_rfc3339(), "2026-05-27T10:00:00+00:00");
+
+        // TLE branch stamps its own key so startup staleness is measured
+        // from the snapshot build date.
+        let tle_stamp = crate::core::sync::last_synced_at(&db, crate::core::sync::Dataset::Tle)
+            .unwrap()
+            .unwrap();
+        assert_eq!(tle_stamp.to_rfc3339(), "2026-05-27T10:00:00+00:00");
 
         let loaded = tle::repo::get_by_norad(&db, 25544).unwrap().unwrap();
         assert_eq!(loaded.name, "ISS (ZARYA)");

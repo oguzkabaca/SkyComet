@@ -212,7 +212,7 @@ export function SatelliteCatalog() {
         setSyncMessage('starting…');
       } else if (event.phase === 'completed') {
         setSyncMessage(
-          `synced ${event.satellitesWritten} satellites · ${event.frequenciesWritten} frequencies`,
+          `synced ${event.satellitesWritten} satellites · ${event.frequenciesWritten} frequencies · ${event.tleWritten} TLE`,
         );
         setReloadKey((k) => k + 1);
       } else if (event.phase === 'skipped') {

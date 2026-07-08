@@ -13,13 +13,21 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use thiserror::Error;
 
 use crate::core::db::{Database, DbError};
-use crate::core::{satellite, space_weather};
+use crate::core::{satellite, space_weather, tle};
+
+/// TLE refresh threshold (calc §7.1 `tle_sync_max_age_hours`). LEO elsets
+/// are republished several times a day; past ~24 h SGP4 error grows fast,
+/// so startup re-fetches once the newest sync is older than this. Distinct
+/// from the UI display threshold (SystemHealthBar 72 h) which only flags
+/// staleness, it does not fetch.
+pub const TLE_MAX_AGE_HOURS: i64 = 24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dataset {
     Catalog,
     Telemetry,
     SpaceWeather,
+    Tle,
 }
 
 impl Dataset {
@@ -29,6 +37,7 @@ impl Dataset {
             Dataset::Catalog => "sync_catalog_last_at",
             Dataset::Telemetry => "sync_telemetry_last_at",
             Dataset::SpaceWeather => "sync_space_weather_last_at",
+            Dataset::Tle => "sync_tle_last_at",
         }
     }
 }
@@ -51,6 +60,14 @@ pub enum SyncOutcome {
         snapshots_written: usize,
         forecasts_written: usize,
     },
+    TlePerformed {
+        dataset: Dataset,
+        fetched_at: DateTime<Utc>,
+        tle_written: usize,
+        /// Elsets CelesTrak returned but the parser rejected (checksum,
+        /// truncation). Non-zero is worth a log line, not an error.
+        tle_skipped: usize,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -61,6 +78,8 @@ pub enum SyncError {
     Catalog(#[from] satellite::CatalogError),
     #[error("space weather error: {0}")]
     SpaceWeather(#[from] space_weather::SpaceWeatherError),
+    #[error("tle error: {0}")]
+    Tle(#[from] tle::TleError),
     #[error("invalid stored timestamp '{stored}': {message}")]
     InvalidTimestamp { stored: String, message: String },
     #[error("dataset {0:?} is not supported by sync_if_needed yet")]
@@ -147,6 +166,7 @@ pub async fn sync_if_needed(
     match dataset {
         Dataset::Catalog => sync_catalog(db).await,
         Dataset::SpaceWeather => sync_space_weather(db).await,
+        Dataset::Tle => sync_tle(db).await,
         Dataset::Telemetry => Err(SyncError::UnsupportedDataset(dataset)),
     }
 }
@@ -158,6 +178,7 @@ pub async fn force_sync(db: &Database, dataset: Dataset) -> Result<SyncOutcome, 
     match dataset {
         Dataset::Catalog => sync_catalog(db).await,
         Dataset::SpaceWeather => sync_space_weather(db).await,
+        Dataset::Tle => sync_tle(db).await,
         Dataset::Telemetry => Err(SyncError::UnsupportedDataset(dataset)),
     }
 }
@@ -173,6 +194,30 @@ async fn sync_catalog(db: &Database) -> Result<SyncOutcome, SyncError> {
         fetched_at,
         satellites_written: sat_count,
         frequencies_written: freq_count,
+    })
+}
+
+/// Refresh every CelesTrak group the app tracks (the same set the snapshot
+/// builder seeds). Fail-fast: a group that errors aborts the sync and the
+/// "last synced at" stamp is *not* advanced — rows upserted by earlier
+/// groups stay (newer data is never a regression) and the next startup
+/// retries the whole set. The caller owns `TleCache::invalidate_all()`
+/// after a `TlePerformed` outcome, same rule as Catalog.
+async fn sync_tle(db: &Database) -> Result<SyncOutcome, SyncError> {
+    let fetched_at = Utc::now();
+    let mut tle_written = 0;
+    let mut tle_skipped = 0;
+    for group in tle::fetcher::CelestrakGroup::ALL {
+        let outcome = tle::fetcher::fetch_group(group).await?;
+        tle_written += tle::repo::upsert_many(db, &outcome.records, &group.as_source())?;
+        tle_skipped += outcome.skipped.len();
+    }
+    record_sync(db, Dataset::Tle, &fetched_at.to_rfc3339())?;
+    Ok(SyncOutcome::TlePerformed {
+        dataset: Dataset::Tle,
+        fetched_at,
+        tle_written,
+        tle_skipped,
     })
 }
 
@@ -222,6 +267,7 @@ mod tests {
             Dataset::SpaceWeather.last_synced_key(),
             "sync_space_weather_last_at"
         );
+        assert_eq!(Dataset::Tle.last_synced_key(), "sync_tle_last_at");
     }
 
     #[test]
@@ -319,6 +365,34 @@ mod tests {
             err,
             SyncError::UnsupportedDataset(Dataset::Telemetry)
         ));
+    }
+
+    #[tokio::test]
+    async fn sync_if_needed_skips_tle_when_fresh() {
+        // Guards the startup path: a TLE sync stamped within
+        // TLE_MAX_AGE_HOURS must not trigger a network fetch.
+        let db = fresh_db();
+        let now = Utc::now();
+        record_sync(&db, Dataset::Tle, &now.to_rfc3339()).unwrap();
+
+        let outcome = sync_if_needed(&db, Dataset::Tle, ChronoDuration::hours(TLE_MAX_AGE_HOURS))
+            .await
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            SyncOutcome::Skipped {
+                dataset: Dataset::Tle,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn tle_is_stale_past_max_age() {
+        let db = fresh_db();
+        let old = Utc::now() - ChronoDuration::hours(TLE_MAX_AGE_HOURS + 1);
+        record_sync(&db, Dataset::Tle, &old.to_rfc3339()).unwrap();
+        assert!(is_stale(&db, Dataset::Tle, ChronoDuration::hours(TLE_MAX_AGE_HOURS)).unwrap());
     }
 
     #[tokio::test]

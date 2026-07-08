@@ -73,6 +73,7 @@ fn map_sync_err(e: sync::SyncError) -> CommandError {
         sync::SyncError::Storage(_) => "storage_error",
         sync::SyncError::Catalog(_) => "catalog_error",
         sync::SyncError::SpaceWeather(_) => "space_weather_error",
+        sync::SyncError::Tle(_) => "tle_error",
         sync::SyncError::InvalidTimestamp { .. } => "invalid_timestamp",
         sync::SyncError::UnsupportedDataset(_) => "unsupported_dataset",
     };

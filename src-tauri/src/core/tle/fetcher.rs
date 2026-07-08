@@ -12,15 +12,29 @@ pub enum CelestrakGroup {
     Stations,
     Amateur,
     Weather,
+    Visual,
 }
 
 impl CelestrakGroup {
+    /// Every group the snapshot builder seeds (`scripts/build_catalog_snapshot.py`);
+    /// the runtime TLE sync refreshes the same set.
+    pub const ALL: [CelestrakGroup; 4] =
+        [Self::Stations, Self::Amateur, Self::Weather, Self::Visual];
+
     pub fn as_query(self) -> &'static str {
         match self {
             Self::Stations => "stations",
             Self::Amateur => "amateur",
             Self::Weather => "weather",
+            Self::Visual => "visual",
         }
+    }
+
+    /// `source` column value in `satellites_tle` — matches the snapshot
+    /// builder's `celestrak/<group>` convention so seeded and refreshed
+    /// rows stay attributable to the same origin.
+    pub fn as_source(self) -> String {
+        format!("celestrak/{}", self.as_query())
     }
 }
 
@@ -77,6 +91,13 @@ mod tests {
         assert_eq!(CelestrakGroup::Stations.as_query(), "stations");
         assert_eq!(CelestrakGroup::Amateur.as_query(), "amateur");
         assert_eq!(CelestrakGroup::Weather.as_query(), "weather");
+        assert_eq!(CelestrakGroup::Visual.as_query(), "visual");
+    }
+
+    #[test]
+    fn group_source_matches_snapshot_builder_convention() {
+        assert_eq!(CelestrakGroup::Stations.as_source(), "celestrak/stations");
+        assert_eq!(CelestrakGroup::ALL.len(), 4);
     }
 
     #[tokio::test]

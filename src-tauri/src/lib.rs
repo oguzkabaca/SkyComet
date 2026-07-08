@@ -52,6 +52,15 @@ pub fn run() {
             // the user can still trigger a live sync later.
             seed_catalog_from_bundle(app.handle(), &database);
 
+            // Dynamic TLE refresh — the bundled snapshot seeds elsets once
+            // and nothing else rewrites `satellites_tle`, so they must be
+            // re-fetched at runtime or they age indefinitely. Background
+            // task; a network failure leaves the seeded data in place.
+            tauri::async_runtime::spawn(refresh_tle_if_stale(
+                database.clone(),
+                Arc::clone(&tle_cache),
+            ));
+
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(tracking_loop(handle, database, tracking_state, tle_cache));
             tracing::info!("Skycomet starting");
@@ -102,6 +111,37 @@ pub fn run() {
     {
         tracing::error!(error = %e, "error while running tauri application");
         std::process::exit(1);
+    }
+}
+
+/// Startup TLE refresh: fetch fresh elsets from CelesTrak when the last
+/// TLE sync (or the snapshot seed stamp) is older than
+/// `sync::TLE_MAX_AGE_HOURS` (calc §7.1 `tle_sync_max_age_hours`).
+/// Best-effort — offline startups keep tracking on the seeded elsets.
+async fn refresh_tle_if_stale(db: Database, cache: Arc<TleCache>) {
+    use crate::core::sync::{self, Dataset, SyncOutcome, TLE_MAX_AGE_HOURS};
+
+    let max_age = chrono::Duration::hours(TLE_MAX_AGE_HOURS);
+    match sync::sync_if_needed(&db, Dataset::Tle, max_age).await {
+        Ok(SyncOutcome::TlePerformed {
+            tle_written,
+            tle_skipped,
+            ..
+        }) => {
+            // Cached propagators may hold the old elsets; drop everything,
+            // the lazy reload picks up the fresh rows (knowledge/db.md rule).
+            cache.invalidate_all();
+            tracing::info!(tle_written, tle_skipped, "startup TLE refresh complete");
+        }
+        Ok(SyncOutcome::Skipped { last_synced_at, .. }) => {
+            tracing::debug!(last_synced_at = %last_synced_at, "TLE data fresh, refresh skipped");
+        }
+        Ok(other) => {
+            tracing::warn!(?other, "unexpected outcome from TLE refresh");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "startup TLE refresh failed; tracking continues on stored elsets");
+        }
     }
 }
 

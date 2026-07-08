@@ -210,6 +210,7 @@ export type CatalogSyncEvent =
       fetchedAt: string;
       satellitesWritten: number;
       frequenciesWritten: number;
+      tleWritten: number;
     }
   | { phase: 'skipped'; lastSyncedAt: string }
   | { phase: 'failed'; code: string; message: string };

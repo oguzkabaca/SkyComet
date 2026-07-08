@@ -156,6 +156,8 @@ pub enum CatalogSyncEvent {
         satellites_written: usize,
         #[serde(rename = "frequenciesWritten")]
         frequencies_written: usize,
+        #[serde(rename = "tleWritten")]
+        tle_written: usize,
     },
     Skipped {
         #[serde(rename = "lastSyncedAt")]
@@ -189,6 +191,7 @@ fn map_sync_err(e: sync::SyncError) -> CommandError {
         sync::SyncError::Storage(_) => "storage_error",
         sync::SyncError::Catalog(_) => "catalog_error",
         sync::SyncError::SpaceWeather(_) => "space_weather_error",
+        sync::SyncError::Tle(_) => "tle_error",
         sync::SyncError::InvalidTimestamp { .. } => "invalid_timestamp",
         sync::SyncError::UnsupportedDataset(_) => "unsupported_dataset",
     };
@@ -250,6 +253,12 @@ pub fn get_catalog_sync_status(
 /// Spawn a background catalog sync. Emits `catalog_sync` events with
 /// `phase`: `started` / `completed` / `skipped` / `failed`. Forces a
 /// fetch (max_age=0) so "Sync now" buttons don't get skipped.
+///
+/// A performed catalog sync is followed by a forced TLE sync — "Sync now"
+/// means "refresh everything the tracker depends on", and stale elsets
+/// are the part the user actually notices. TLE failure after a successful
+/// catalog write surfaces as `failed` (the catalog rows stay; retry is
+/// cheap and idempotent).
 #[tauri::command]
 pub fn sync_catalog(
     app: AppHandle,
@@ -273,8 +282,41 @@ pub fn sync_catalog(
                 frequencies_written,
                 ..
             }) => {
-                // TLE cache may hold rows whose source rows were just
-                // rewritten. Drop everything; lazy reload picks fresh data.
+                let tle_written = match sync::force_sync(&db, Dataset::Tle).await {
+                    Ok(SyncOutcome::TlePerformed {
+                        tle_written,
+                        tle_skipped,
+                        ..
+                    }) => {
+                        if tle_skipped > 0 {
+                            tracing::warn!(tle_skipped, "TLE sync skipped unparseable elsets");
+                        }
+                        tle_written
+                    }
+                    Ok(other) => {
+                        tracing::warn!(?other, "unexpected outcome from TLE sync");
+                        0
+                    }
+                    Err(e) => {
+                        let mapped = map_sync_err(e);
+                        emit_event(
+                            &app,
+                            CatalogSyncEvent::Failed {
+                                code: mapped.code,
+                                message: format!(
+                                    "catalog updated, TLE refresh failed: {}",
+                                    mapped.message
+                                ),
+                            },
+                        );
+                        // Catalog rows were rewritten even though the TLE leg
+                        // failed — the cache must still drop stale entries.
+                        cache.invalidate_all();
+                        return;
+                    }
+                };
+                // Catalog + TLE source rows were just rewritten. Drop
+                // everything; lazy reload picks fresh data.
                 cache.invalidate_all();
                 emit_event(
                     &app,
@@ -282,6 +324,7 @@ pub fn sync_catalog(
                         fetched_at: fetched_at.to_rfc3339(),
                         satellites_written,
                         frequencies_written,
+                        tle_written,
                     },
                 );
             }
@@ -293,10 +336,11 @@ pub fn sync_catalog(
                     },
                 );
             }
-            Ok(SyncOutcome::SpaceWeatherPerformed { .. }) => {
+            Ok(other) => {
+                tracing::warn!(?other, "unexpected outcome from catalog sync");
                 let mapped = CommandError {
                     code: "unexpected_sync_outcome".into(),
-                    message: "catalog sync returned a space-weather outcome".into(),
+                    message: "catalog sync returned a non-catalog outcome".into(),
                 };
                 emit_event(
                     &app,
