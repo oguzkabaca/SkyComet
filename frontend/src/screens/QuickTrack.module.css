@@ -21,6 +21,10 @@
   border-radius: var(--r-lg);
   box-shadow: var(--sh-1);
   overflow-y: auto;
+  /* Container for the .main layout switch — the stacking decision must follow
+     the panel's own width (sidebar state changes it independently of the
+     window), not a viewport breakpoint. */
+  container-type: inline-size;
 }
 
 /* Region 1 (top operations bar) lives in QuickTrackHeader.module.css. */
@@ -40,6 +44,13 @@
   grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
   gap: 16px;
   padding: 16px 20px;
+}
+
+/* No satellite set: the ground map / timeline sections are absent, so without
+   this the main region would swallow the whole panel height and the empty sky
+   view would tower. Hold it at its minimum instead. */
+.mainEmpty {
+  flex: 0 0 auto;
 }
 
 .visual {
@@ -93,6 +104,7 @@
 /* --- Bottom system health strip ------------------------------------------- */
 .health {
   flex: none;
+  margin-top: auto; /* pinned to the panel bottom when the regions above don't fill it */
   display: flex;
   align-items: center;
   gap: 12px;
@@ -101,8 +113,13 @@
   background: var(--bg-panel-2);
 }
 
-/* --- Responsive: stack sky view over the cards (brief §15) ---------------- */
-@media (max-width: 900px) {
+/* --- Responsive: stack sky view over the cards (brief §15) ----------------
+   Threshold is exact by construction: .main needs 40px padding + 340px sky
+   column + 16px gap + 534px (two 260px card columns + 14px gap) = 930px of
+   panel width. Below that the cards would pile into one tall column and
+   stretch the sky view with them, so stack instead. Container query, not a
+   viewport breakpoint — the panel width depends on the sidebar state too. */
+@container (max-width: 940px) {
   .main {
     grid-template-columns: 1fr;
     grid-auto-rows: min-content;
@@ -111,5 +128,6 @@
 
   .visual {
     min-height: 320px;
+    justify-content: center;
   }
 }

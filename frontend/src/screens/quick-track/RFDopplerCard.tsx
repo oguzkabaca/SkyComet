@@ -3,14 +3,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { FrequencyRecord } from '../../lib/ipc/commands';
 import type { TrackingSnapshot } from '../../lib/ipc/events';
 import { correctedUplinkHz, dopplerShiftHz, observedDownlinkHz } from './doppler';
+import { fmtBand, profileName, type RFSelection } from './rf';
 import styles from './RFDopplerCard.module.css';
 
 /** Full-scale of the Doppler indicator bar (kHz). */
 const BAR_SCALE_KHZ = 10;
 
 interface Props {
-  frequency: FrequencyRecord | null;
-  rfLabel: string | null;
+  /** The satellite's trackable frequency list (empty when it has none). */
+  frequencies: FrequencyRecord[];
+  selection: RFSelection;
+  /** Quick profile switch — usable mid-track without touching the dialog. */
+  onSelect: (selection: RFSelection) => void;
   snapshot: TrackingSnapshot | null;
 }
 
@@ -30,10 +34,33 @@ function fmtKHzSigned(hz: number): string {
 /**
  * Live RF & Doppler read-out (brief §8) — only what tracking needs, not the full
  * RF planner. Doppler is derived from the snapshot range-rate (canon §12.4/§6.2).
- * There is no radio backend (ADR 0013 D3), so the radio line stays "not
- * configured" — never a fabricated CAT link, and never a fake spectrum.
+ * A compact switcher in the card head swaps the RF profile mid-track. There is
+ * no radio backend (ADR 0013 D3), so the radio line stays "not configured" —
+ * never a fabricated CAT link, and never a fake spectrum.
  */
-export function RFDopplerCard({ frequency, rfLabel, snapshot }: Props) {
+export function RFDopplerCard({ frequencies, selection, onSelect, snapshot }: Props) {
+  const frequency =
+    selection.kind === 'profile' ? (frequencies[selection.index] ?? null) : null;
+  const rfLabel = frequency ? profileName(frequency) : null;
+
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function onDown(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [pickerOpen]);
+
+  function pick(sel: RFSelection) {
+    onSelect(sel);
+    setPickerOpen(false);
+  }
+
   const nominal = frequency ? nominalHz(frequency) : null;
   const uplink = frequency?.uplinkLowHz ?? frequency?.uplinkHighHz ?? null;
   const rrMps = snapshot ? snapshot.range_rate_km_s * 1000 : null;
@@ -71,16 +98,73 @@ export function RFDopplerCard({ frequency, rfLabel, snapshot }: Props) {
 
   return (
     <section className={styles.card} aria-label="RF and Doppler">
-      <h3 className={styles.title}>RF &amp; Doppler</h3>
+      <div className={styles.head}>
+        <h3 className={styles.title}>RF &amp; Doppler</h3>
+        {frequencies.length > 0 && (
+          <div className={styles.switch} ref={pickerRef}>
+            <button
+              type="button"
+              className={styles.switchBtn}
+              onClick={() => setPickerOpen((o) => !o)}
+              aria-haspopup="listbox"
+              aria-expanded={pickerOpen}
+              title="Switch RF profile"
+            >
+              <span className={styles.switchLabel}>{rfLabel ?? 'No RF'}</span>
+              <span className={styles.caret} aria-hidden="true">
+                ▾
+              </span>
+            </button>
+            {pickerOpen && (
+              <div className={styles.pop} role="listbox" aria-label="RF profile">
+                {frequencies.map((f, i) => {
+                  const on = selection.kind === 'profile' && selection.index === i;
+                  return (
+                    <button
+                      key={`${f.downlinkLowHz}-${f.uplinkLowHz}-${i}`}
+                      type="button"
+                      role="option"
+                      aria-selected={on}
+                      className={on ? `${styles.popOpt} ${styles.popOn}` : styles.popOpt}
+                      onClick={() => pick({ kind: 'profile', index: i })}
+                    >
+                      <span className={styles.popName}>{profileName(f)}</span>
+                      <span className={styles.popFreq}>
+                        {fmtBand(f.downlinkLowHz, f.downlinkHighHz) ?? '—'}
+                        {f.mode ? ` · ${f.mode}` : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selection.kind === 'none'}
+                  className={
+                    selection.kind === 'none'
+                      ? `${styles.popOpt} ${styles.popOn}`
+                      : styles.popOpt
+                  }
+                  onClick={() => pick({ kind: 'none' })}
+                >
+                  <span className={styles.popName}>No RF</span>
+                  <span className={styles.popFreq}>Track without Doppler correction</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {frequency === null ? (
         <p className={styles.note}>
-          No RF profile selected. Doppler correction needs a downlink frequency.
+          {frequencies.length === 0
+            ? 'No RF profile available for this satellite.'
+            : 'No RF profile selected. Doppler correction needs a downlink frequency.'}
         </p>
       ) : (
         <>
           <div className={styles.grid}>
-            <Row k="RF profile" v={rfLabel ?? '—'} mono={false} />
             <Row k="Nominal downlink" v={nominal !== null ? `${fmtMHz(nominal)} MHz` : '—'} />
             <Row
               k="Doppler shift"

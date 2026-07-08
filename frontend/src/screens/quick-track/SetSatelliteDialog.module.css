@@ -8,10 +8,11 @@
   background: rgba(0, 0, 0, 0.5);
 }
 
+/* Fixed height: tab switches and search results must not resize the dialog. */
 .dialog {
   width: 100%;
   max-width: 720px;
-  max-height: min(620px, calc(100vh - 40px));
+  height: min(620px, calc(100vh - 40px));
   display: flex;
   flex-direction: column;
   gap: 12px;

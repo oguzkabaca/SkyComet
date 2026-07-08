@@ -8,12 +8,111 @@
   border-radius: var(--r-md);
 }
 
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .title {
   margin: 0;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.3px;
   text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+/* --- quick RF profile switch (usable mid-track) ---------------------------- */
+.switch {
+  position: relative;
+  flex: none;
+  min-width: 0;
+}
+
+.switchBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  padding: 3px 10px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.switchBtn:hover {
+  border-color: var(--border-strong);
+}
+
+.switchLabel {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.caret {
+  flex: none;
+  font-size: 9px;
+  color: var(--fg-dim);
+}
+
+.pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 240px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+}
+
+.popOpt {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.popOpt:hover {
+  background: var(--bg-hover);
+}
+
+.popOn {
+  background: var(--bg-inset);
+  outline: 1px solid var(--accent);
+}
+
+.popName {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.popFreq {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   color: var(--fg-dim);
 }
 

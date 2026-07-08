@@ -226,6 +226,20 @@ export function QuickTrack({ onNavigate }: Props) {
     });
   }
 
+  // Quick RF switch from the RF & Doppler card — works mid-track (the loop is
+  // satellite-scoped; the frequency only feeds the frontend Doppler math) and
+  // keeps the saved target in sync.
+  function handleRfQuickSelect(sel: RFSelection) {
+    setRfSelection(sel);
+    if (selectedSat) {
+      writeSavedTarget({
+        norad: selectedSat.norad_id,
+        name: selectedSat.name,
+        rfIndex: sel.kind === 'profile' ? sel.index : null,
+      });
+    }
+  }
+
   function handleDialogReset() {
     writeSavedTarget(null);
     setSelectedSat(null);
@@ -294,8 +308,6 @@ export function QuickTrack({ onNavigate }: Props) {
   const rotorActual = rotor?.lastPosition
     ? { azimuthDeg: rotor.lastPosition.azDeg, elevationDeg: rotor.lastPosition.elDeg }
     : null;
-  const selectedFrequency =
-    rfSelection.kind === 'profile' ? (rfFrequencies[rfSelection.index] ?? null) : null;
   const rfLabel = rfLabelOf(rfSelection, rfFrequencies);
 
   return (
@@ -330,7 +342,7 @@ export function QuickTrack({ onNavigate }: Props) {
           </div>
         )}
 
-        <div className={styles.main}>
+        <div className={norad === null ? `${styles.main} ${styles.mainEmpty}` : styles.main}>
           <div className={styles.visual}>
             <TrackingVisual
               norad={norad}
@@ -343,8 +355,9 @@ export function QuickTrack({ onNavigate }: Props) {
           <aside className={styles.side}>
             <LiveSatelliteCard snapshot={liveSnapshot} live={tracking} />
             <RFDopplerCard
-              frequency={selectedFrequency}
-              rfLabel={rfLabel}
+              frequencies={rfFrequencies}
+              selection={rfSelection}
+              onSelect={handleRfQuickSelect}
               snapshot={tracking ? liveSnapshot : null}
             />
             <RotorStatusCard

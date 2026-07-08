@@ -45,12 +45,13 @@
   overflow: hidden;
 }
 
-/* Largest square that fits the stage by both width and height, so the polar
-   plot never overflows a short viewport. */
+/* Width-driven square with a height cap. Height-driven sizing broke in tall
+   stages (stacked side cards): aspect-ratio lost to max-width and the wrap
+   became a distorted tall strip. Width never exceeds the column, so the
+   square stays a square; the stage centers it when the row is taller. */
 .polarWrap {
-  height: 100%;
+  width: min(100%, 420px);
   max-height: 100%;
-  max-width: 100%;
   aspect-ratio: 1 / 1;
   display: flex;
 }
