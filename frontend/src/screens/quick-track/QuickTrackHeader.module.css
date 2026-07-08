@@ -53,3 +53,54 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* Saved-target chip — click opens the Set a Satellite dialog. */
+.target {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 1px;
+  align-items: center;
+  max-width: 300px;
+  min-height: 38px;
+  padding: 4px 12px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.target:hover {
+  border-color: var(--border-strong);
+}
+
+.targetName {
+  grid-column: 1;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.targetMeta {
+  grid-column: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.targetChange {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 11px;
+  color: var(--accent);
+}

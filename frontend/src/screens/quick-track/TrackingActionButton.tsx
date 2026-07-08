@@ -4,40 +4,26 @@ interface Props {
   hasSatellite: boolean;
   stationReady: boolean;
   rotorConnected: boolean;
-  tracking: boolean;
-  onStart: () => void;
-  onStop: () => void;
+  onStartSoftware: () => void;
+  onStartRotor: () => void;
   onConfigureStation: () => void;
 }
 
 /**
- * The primary tracking action, whose label reflects the current readiness
- * (brief §11). It never lies: without a station it routes to Settings; without
- * a rotor it offers software-only tracking.
+ * The idle-state tracking actions. Software tracking computes everything (look
+ * angles, RF, timeline) without moving hardware; rotor tracking additionally
+ * steers the connected rotor. The pair never lies: without a station it routes
+ * to Settings, and the rotor button stays disabled until a rotor is connected.
  */
 export function TrackingActionButton({
   hasSatellite,
   stationReady,
   rotorConnected,
-  tracking,
-  onStart,
-  onStop,
+  onStartSoftware,
+  onStartRotor,
   onConfigureStation,
 }: Props) {
-  if (tracking) {
-    return (
-      <Button variant="primary" onClick={onStop}>
-        Stop Tracking
-      </Button>
-    );
-  }
-  if (!hasSatellite) {
-    return (
-      <Button variant="primary" disabled>
-        Select Satellite
-      </Button>
-    );
-  }
+  if (!hasSatellite) return null;
   if (!stationReady) {
     return (
       <Button variant="primary" onClick={onConfigureStation}>
@@ -46,8 +32,18 @@ export function TrackingActionButton({
     );
   }
   return (
-    <Button variant="primary" onClick={onStart}>
-      {rotorConnected ? 'Start Tracking' : 'Start Software Tracking'}
-    </Button>
+    <>
+      <Button variant="secondary" onClick={onStartSoftware}>
+        Start Software Tracking
+      </Button>
+      <Button
+        variant="primary"
+        disabled={!rotorConnected}
+        title={rotorConnected ? undefined : 'Connect a rotor first (Rotor Control)'}
+        onClick={onStartRotor}
+      >
+        Start Rotor Tracking
+      </Button>
+    </>
   );
 }

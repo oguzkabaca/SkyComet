@@ -32,6 +32,11 @@ const PHASE_LABEL: Record<PassPhase, string> = {
 interface Props {
   /** Live snapshot, or null when it belongs to another satellite / not tracking. */
   snapshot: TrackingSnapshot | null;
+  /**
+   * False while a saved target is merely previewed: only azimuth/elevation
+   * update live, the derived telemetry waits for Start (screen brief).
+   */
+  live?: boolean;
 }
 
 /**
@@ -39,9 +44,10 @@ interface Props {
  * values; range / range-rate / altitude are secondary; the pass phase is a
  * badge. Fields come straight from the enriched snapshot (canon §12).
  */
-export function LiveSatelliteCard({ snapshot }: Props) {
-  const has = snapshot !== null;
-  const phase = snapshot?.pass_phase ?? null;
+export function LiveSatelliteCard({ snapshot, live = true }: Props) {
+  const has = snapshot !== null && live;
+  const phase = live ? (snapshot?.pass_phase ?? null) : null;
+  const full = live ? snapshot : null;
 
   return (
     <section className={styles.card} aria-label="Live satellite">
@@ -71,27 +77,33 @@ export function LiveSatelliteCard({ snapshot }: Props) {
       <div className={styles.grid}>
         <div className={styles.stat}>
           <span className={styles.statLabel}>Range</span>
-          <span className={styles.statValue}>{fmtKm(snapshot?.range_km)}</span>
+          <span className={styles.statValue}>{fmtKm(full?.range_km)}</span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statLabel}>Range rate</span>
-          <span className={styles.statValue}>{fmtRangeRate(snapshot?.range_rate_km_s)}</span>
+          <span className={styles.statValue}>{fmtRangeRate(full?.range_rate_km_s)}</span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statLabel}>Altitude</span>
-          <span className={styles.statValue}>{fmtKm(snapshot?.altitude_km)}</span>
+          <span className={styles.statValue}>{fmtKm(full?.altitude_km)}</span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statLabel}>TLE age</span>
-          <span className={styles.statValue}>{fmtHours(snapshot?.tle_age_hours)}</span>
+          <span className={styles.statValue}>{fmtHours(full?.tle_age_hours)}</span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statLabel}>Updated</span>
           <span className={styles.statValue}>
-            {has ? new Date(snapshot!.time_utc).toLocaleTimeString() : '—'}
+            {has ? new Date(full!.time_utc).toLocaleTimeString() : '—'}
           </span>
         </div>
       </div>
+
+      {!live && snapshot !== null && (
+        <p className={styles.previewNote}>
+          Preview — start tracking to compute the full telemetry.
+        </p>
+      )}
     </section>
   );
 }
