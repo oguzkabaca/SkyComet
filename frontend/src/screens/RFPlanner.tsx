@@ -17,6 +17,7 @@ import {
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field } from '../components/Field';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatusLine } from '../components/StatusLine';
 import { DopplerChart } from '../viz/DopplerChart';
 import { LinkBudgetTable } from '../viz/LinkBudgetTable';
@@ -228,7 +229,8 @@ export function RFPlanner() {
   }
 
   return (
-    <section className={styles.screen}>
+    <ScreenFrame>
+      <ScreenPanel className={styles.panel} container>
       <div className={styles.head}>
         <h1 className={styles.title}>RF Planner</h1>
         <span className={styles.sub}>Doppler curve and downlink link budget</span>
@@ -321,6 +323,7 @@ export function RFPlanner() {
           </Card>
         </div>
       </div>
-    </section>
+      </ScreenPanel>
+    </ScreenFrame>
   );
 }

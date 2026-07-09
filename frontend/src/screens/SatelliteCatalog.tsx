@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react';
 
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
 import {
@@ -266,7 +267,8 @@ export function SatelliteCatalog() {
   }
 
   return (
-    <section className={styles.screen}>
+    <ScreenFrame>
+      <ScreenPanel className={styles.panel} container>
       <div className={styles.toolbar}>
         <input
           type="search"
@@ -286,9 +288,11 @@ export function SatelliteCatalog() {
       </div>
 
       {error && (
-        <StatusLine tone="error" role="alert">
-          {error}
-        </StatusLine>
+        <div className={styles.alerts}>
+          <StatusLine tone="error" role="alert">
+            {error}
+          </StatusLine>
+        </div>
       )}
 
       <div className={styles.body}>
@@ -360,7 +364,8 @@ export function SatelliteCatalog() {
           </div>
         </Card>
       </div>
-    </section>
+      </ScreenPanel>
+    </ScreenFrame>
   );
 }
 

@@ -3,6 +3,7 @@ import { useEffect, useState, type ChangeEvent } from 'react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field } from '../components/Field';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
 import {
@@ -159,8 +160,8 @@ export function SatellitePasses() {
   const selectedSat = selected !== '' ? satellites.find((s) => s.norad_id === selected) : undefined;
 
   return (
-    <div className={styles.screen}>
-      <div className={styles.panel}>
+    <ScreenFrame>
+      <ScreenPanel className={styles.panel} overflow="y-auto" container>
         <header className={styles.head}>
           <div className={styles.headText}>
             <span className={styles.eyebrow}>Pass planning</span>
@@ -338,7 +339,7 @@ export function SatellitePasses() {
             </div>
           </section>
         </div>
-      </div>
-    </div>
+      </ScreenPanel>
+    </ScreenFrame>
   );
 }

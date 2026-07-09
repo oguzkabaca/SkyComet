@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '../components/Button';
 import { Field } from '../components/Field';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatusLine } from '../components/StatusLine';
 import {
   detectLocationIp,
@@ -93,8 +94,8 @@ export function Settings() {
   const section = SECTIONS.find((s) => s.id === active) ?? SECTIONS[0];
 
   return (
-    <div className={styles.screen}>
-      <div className={railOpen ? styles.body : `${styles.body} ${styles.bodyRailHidden}`}>
+    <ScreenFrame>
+      <ScreenPanel className={railOpen ? styles.body : `${styles.body} ${styles.bodyRailHidden}`}>
         <header className={styles.head}>
           <button
             type="button"
@@ -138,8 +139,8 @@ export function Settings() {
           {active === 'profile' && <ProfileForm />}
           {active === 'rotor' && <RotorForm />}
         </div>
-      </div>
-    </div>
+      </ScreenPanel>
+    </ScreenFrame>
   );
 }
 

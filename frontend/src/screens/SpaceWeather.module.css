@@ -1,14 +1,23 @@
-.screen {
+.panel {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  align-items: flex-start;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panel > * {
+  width: 100%;
   max-width: 720px;
 }
 
 .head {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
 }
 
@@ -16,8 +25,8 @@
   margin: 0;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 26px;
-  line-height: 1.1;
+  font-size: 20px;
+  line-height: 1.15;
   color: var(--fg);
 }
 

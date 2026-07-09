@@ -13,6 +13,7 @@ import {
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field } from '../components/Field';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatRow } from '../components/StatRow';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
@@ -145,7 +146,8 @@ export function OperatorBrief() {
   }, [norad, selectedAos, freqMhz, passes]);
 
   return (
-    <section className={styles.screen}>
+    <ScreenFrame>
+      <ScreenPanel className={styles.panel}>
       <header className={styles.head}>
         <h1 className={styles.title}>Operator Brief</h1>
         <p className={styles.sub}>
@@ -266,6 +268,7 @@ export function OperatorBrief() {
           </Card>
         </div>
       )}
-    </section>
+      </ScreenPanel>
+    </ScreenFrame>
   );
 }

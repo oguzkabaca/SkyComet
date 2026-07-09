@@ -8,6 +8,7 @@ import {
   type SpaceWeatherRisk,
 } from '../lib/ipc/commands';
 import { Button } from '../components/Button';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
 import styles from './SpaceWeather.module.css';
@@ -111,7 +112,8 @@ export function SpaceWeather() {
   }, []);
 
   return (
-    <section className={styles.screen}>
+    <ScreenFrame>
+      <ScreenPanel className={styles.panel}>
       <header className={styles.head}>
         <h1 className={styles.title}>Space Weather</h1>
         <div className={styles.actions}>
@@ -181,6 +183,7 @@ export function SpaceWeather() {
           </p>
         </div>
       )}
-    </section>
+      </ScreenPanel>
+    </ScreenFrame>
   );
 }

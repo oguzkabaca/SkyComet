@@ -1,0 +1,30 @@
+.frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: -20px -24px;
+}
+
+.panel {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+
+.overflowAuto {
+  overflow: auto;
+}
+
+.overflowYAuto {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.container {
+  container-type: inline-size;
+}

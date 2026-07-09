@@ -1,25 +1,9 @@
-.screen {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  /* Cancel .main's 20px/24px padding so the panel spans the exact same
-     vertical range as the app Sidebar (both bounded by the shell's 14px). */
-  margin: -20px -24px;
-}
-
 /* --- one panel: header row + rail | content, vertical divider ------------- */
 
 .body {
-  flex: 1;
-  min-height: 0;
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--sh-1);
   overflow: hidden;
 }
 

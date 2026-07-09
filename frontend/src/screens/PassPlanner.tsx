@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { Field } from '../components/Field';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatusLine } from '../components/StatusLine';
 import {
   getLocation,
@@ -161,8 +162,8 @@ export function PassPlanner() {
   const passCount = soonRows.reduce((n, s) => n + s.passes.length, 0);
 
   return (
-    <div className={styles.screen}>
-      <div className={styles.panel}>
+    <ScreenFrame>
+      <ScreenPanel className={styles.panel} container>
         <header className={styles.head}>
           <div className={styles.headText}>
             <span className={styles.eyebrow}>Pass planning</span>
@@ -306,7 +307,7 @@ export function PassPlanner() {
             </aside>
           )}
         </div>
-      </div>
-    </div>
+      </ScreenPanel>
+    </ScreenFrame>
   );
 }

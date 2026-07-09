@@ -15,6 +15,7 @@ import {
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field } from '../components/Field';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatRow } from '../components/StatRow';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
@@ -178,7 +179,8 @@ export function RotorControl() {
   const connected = status.connected;
 
   return (
-    <section className={styles.screen}>
+    <ScreenFrame>
+      <ScreenPanel className={styles.panel}>
       <header className={styles.head}>
         <h1 className={styles.title}>Rotor Control</h1>
         <p className={styles.sub}>
@@ -309,6 +311,7 @@ export function RotorControl() {
           rejected, §8.9). Limits come from profile data — G-5500: az 0–450°, el 0–180°.
         </p>
       </Card>
-    </section>
+      </ScreenPanel>
+    </ScreenFrame>
   );
 }

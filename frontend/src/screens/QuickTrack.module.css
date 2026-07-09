@@ -1,30 +1,8 @@
-/* Full-height panel spanning the same vertical range as the app Sidebar
-   (matches Settings). .main adds 20px/24px padding; the negative margin cancels
-   it so the panel is bounded by the shell's 14px gutter. */
-.screen {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  margin: -20px -24px;
-}
-
 /* Stacked regions: ops bar · (alerts) · main (sky | cards) · timeline · ground
    map · health. The panel scrolls when the ground map pushes past the viewport. */
 .panel {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--sh-1);
-  overflow-y: auto;
-  /* Container for the .main layout switch — the stacking decision must follow
-     the panel's own width (sidebar state changes it independently of the
-     window), not a viewport breakpoint. */
-  container-type: inline-size;
 }
 
 /* Region 1 (top operations bar) lives in QuickTrackHeader.module.css. */

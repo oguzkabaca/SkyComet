@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { StatusLine } from '../components/StatusLine';
+import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import {
   getLastActiveNorad,
   getLocation,
@@ -313,8 +314,8 @@ export function QuickTrack({ onNavigate }: Props) {
   const rfLabel = rfLabelOf(rfSelection, rfFrequencies);
 
   return (
-    <div className={styles.screen}>
-      <div className={styles.panel}>
+    <ScreenFrame>
+      <ScreenPanel className={styles.panel} overflow="y-auto" container>
         <QuickTrackHeader
           selectedSat={selectedSat}
           rfLabel={rfLabel}
@@ -394,7 +395,7 @@ export function QuickTrack({ onNavigate }: Props) {
             stationReady={stationReady}
           />
         </footer>
-      </div>
+      </ScreenPanel>
 
       {setDialogOpen && (
         <SetSatelliteDialog
@@ -418,6 +419,6 @@ export function QuickTrack({ onNavigate }: Props) {
         onCancel={() => setStopDialogOpen(false)}
         onConfirm={handleStopConfirm}
       />
-    </div>
+    </ScreenFrame>
   );
 }

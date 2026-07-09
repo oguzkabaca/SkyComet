@@ -1,15 +1,17 @@
-.screen {
+.panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  gap: 16px;
+  overflow: hidden;
 }
 
 .toolbar {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .search {
@@ -31,9 +33,15 @@
 }
 
 .meta {
+  min-width: 0;
   color: var(--fg-dim);
   font-size: 12px;
   font-family: var(--font-mono);
+}
+
+.alerts {
+  flex: none;
+  padding: 12px 20px 0;
 }
 
 .body {
@@ -42,6 +50,8 @@
   gap: 16px;
   flex: 1;
   min-height: 0;
+  padding: 16px 20px 20px;
+  overflow: hidden;
 }
 
 /* Card overflow:auto + border-radius clipped the scrollbar at the corner; Card
@@ -199,4 +209,16 @@
 
 .freqInactive td {
   color: var(--fg-dim);
+}
+
+@container (max-width: 860px) {
+  .body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .listCard,
+  .detailCard {
+    min-height: 320px;
+  }
 }
