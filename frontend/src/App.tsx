@@ -8,6 +8,7 @@ import { QuickTrack } from './screens/QuickTrack';
 import { RFPlanner } from './screens/RFPlanner';
 import { RotorControl } from './screens/RotorControl';
 import { SatelliteCatalog } from './screens/SatelliteCatalog';
+import { SatellitePasses } from './screens/SatellitePasses';
 import { Settings } from './screens/Settings';
 import { SpaceWeather } from './screens/SpaceWeather';
 import { RealtimeProvider } from './stores/realtime';
@@ -20,6 +21,7 @@ function App() {
       <AppShell active={screen} onNavigate={setScreen}>
         {screen === 'quick-track' && <QuickTrack onNavigate={setScreen} />}
         {screen === 'pass-planner' && <PassPlanner />}
+        {screen === 'satellite-passes' && <SatellitePasses />}
         {screen === 'catalog' && <SatelliteCatalog />}
         {screen === 'rf-planner' && <RFPlanner />}
         {screen === 'space-weather' && <SpaceWeather />}

@@ -1,6 +1,7 @@
 export type ScreenId =
   | 'quick-track'
   | 'pass-planner'
+  | 'satellite-passes'
   | 'rf-planner'
   | 'catalog'
   | 'space-weather'
@@ -39,7 +40,10 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Planning',
-    items: [{ label: 'Pass planner', icon: 'pass-planner', screen: 'pass-planner' }],
+    items: [
+      { label: 'Pass planner', icon: 'pass-planner', screen: 'pass-planner' },
+      { label: 'Satellite passes', icon: 'pass-planner', screen: 'satellite-passes' },
+    ],
   },
   {
     title: 'RF',
