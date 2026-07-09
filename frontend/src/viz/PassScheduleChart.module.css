@@ -1,0 +1,168 @@
+/* All-sky schedule timeline. Layout constant: the name column width must be
+   identical in the axis row and the satellite rows so bars align with ticks. */
+.chart {
+  --name-col-w: 200px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ---------- axis ---------- */
+.axisRow {
+  display: grid;
+  grid-template-columns: var(--name-col-w) 1fr;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.axisTrack {
+  position: relative;
+  height: 26px;
+}
+
+.axisNow {
+  position: absolute;
+  left: 0;
+  top: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.axisTick {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+/* ---------- rows ---------- */
+.rows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Vertical hour grid + the creeping "now" line span every row. The overlay
+   covers the track region only, so its percentages share the bars'
+   coordinate system. */
+.linesOverlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--name-col-w);
+  right: 0;
+  pointer-events: none;
+}
+
+.gridLine,
+.nowLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.gridLine {
+  background: var(--border-soft);
+}
+
+.nowLine {
+  background: var(--accent);
+  opacity: 0.65;
+  z-index: 1;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--name-col-w) 1fr;
+  min-height: 34px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.nameCol {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px 8px 0;
+}
+
+.satName {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.satId {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-faint);
+}
+
+.track {
+  position: relative;
+  min-width: 0;
+}
+
+/* ---------- pass bars ---------- */
+.bar {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 14px;
+  min-width: 5px;
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.85;
+  transition:
+    opacity 100ms,
+    box-shadow 100ms;
+}
+
+.bar:hover {
+  opacity: 1;
+}
+
+.barOn {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--bg-panel), 0 0 0 4px var(--accent);
+  z-index: 1;
+}
+
+.barOverhead {
+  background: var(--ok);
+}
+
+.barGood {
+  background: var(--accent);
+}
+
+.barMarginal {
+  background: var(--warn);
+}
+
+.barPoor {
+  background: var(--fg-faint);
+}
