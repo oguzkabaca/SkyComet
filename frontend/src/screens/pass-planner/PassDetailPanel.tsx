@@ -11,6 +11,7 @@ import {
   type PassFeasibility,
   type PassSample,
 } from '../../lib/ipc/commands';
+import { isPlanned, usePassPlan } from '../../lib/passPlan';
 import { type SchedulePassRef } from '../../viz/PassScheduleChart';
 import { PolarPlot } from '../../viz/PolarPlot';
 import styles from './PassDetailPanel.module.css';
@@ -78,6 +79,7 @@ export function PassDetailPanel({ sel, onClose }: Props) {
   const [track, setTrack] = useState<PassSample[] | null>(null);
   const [feas, setFeas] = useState<PassFeasibility | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { plan, add, remove } = usePassPlan();
   // Mount instant — enough precision for the "In progress" tag, and pure
   // per render (the component remounts per selection).
   const [nowMs] = useState(() => Date.now());
@@ -107,6 +109,7 @@ export function PassDetailPanel({ sel, onClose }: Props) {
 
   const p = sel.pass;
   const inProgress = new Date(p.aos).getTime() <= nowMs && nowMs < new Date(p.los).getTime();
+  const planned = isPlanned(plan, sel.noradId, p.aos);
 
   return (
     <section className={styles.detail} aria-label="Pass detail">
@@ -178,6 +181,21 @@ export function PassDetailPanel({ sel, onClose }: Props) {
             <dd className={styles.statVal}>{p.score.toFixed(2)}</dd>
           </div>
         </dl>
+
+      {/* Queue the pass for the Quick Track picker's "Pass plan" tab. */}
+      <div className={styles.planAction}>
+        {planned ? (
+          <Button onClick={() => remove(sel.noradId, p.aos)}>Remove from pass plan</Button>
+        ) : (
+          <Button
+            variant="primary"
+            onClick={() => add({ norad: sel.noradId, name: sel.name, pass: p })}
+          >
+            Add to pass plan
+          </Button>
+        )}
+        {planned && <span className={styles.planNote}>In the Quick Track pass plan</span>}
+      </div>
     </section>
   );
 }

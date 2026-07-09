@@ -24,6 +24,7 @@ import {
   type VisibleSatellite,
 } from '../lib/ipc/commands';
 import { type TrackingSnapshot } from '../lib/ipc/events';
+import { usePassPlan } from '../lib/passPlan';
 import { type ScreenId } from '../nav';
 import { useRealtime } from '../stores/useRealtime';
 import { GroundMapView } from './quick-track/GroundMapView';
@@ -54,6 +55,7 @@ function isCommandError(value: unknown): value is CommandError {
 export function QuickTrack({ onNavigate }: Props) {
   const { snapshot, error } = useRealtime();
   const { favorites, toggle } = useFavorites();
+  const { plan, remove: removePlanned } = usePassPlan();
 
   const [satellites, setSatellites] = useState<SatelliteSummary[]>([]);
   const [visible, setVisible] = useState<VisibleSatellite[]>([]);
@@ -400,6 +402,8 @@ export function QuickTrack({ onNavigate }: Props) {
           visible={visible}
           favorites={favorites}
           onToggleFavorite={toggle}
+          plan={plan}
+          onRemovePlanned={removePlanned}
           initialSat={selectedSat}
           initialRf={rfSelection}
           onCancel={() => setSetDialogOpen(false)}

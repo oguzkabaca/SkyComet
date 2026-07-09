@@ -89,3 +89,16 @@
   letter-spacing: -0.2px;
   font-variant-numeric: tabular-nums;
 }
+
+.planAction {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.planNote {
+  font-size: 11px;
+  color: var(--fg-dim);
+}

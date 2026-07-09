@@ -7,11 +7,12 @@ import {
   type SatelliteSummary,
   type VisibleSatellite,
 } from '../../lib/ipc/commands';
+import { formatCountdown, type PlannedPass } from '../../lib/passPlan';
 import { fmtBand, isTrackable, profileName, type RFSelection } from './rf';
 import styles from './SetSatelliteDialog.module.css';
 
-/** Satellite sources the picker can browse. Pass plan arrives with the planner. */
-type SourceTab = 'visible' | 'favorites' | 'all';
+/** Satellite sources the picker can browse. */
+type SourceTab = 'visible' | 'favorites' | 'plan' | 'all';
 
 /** Cap for the "All satellites" tab — the full TLE list is ~2700 rows. */
 const ALL_TAB_ROW_CAP = 150;
@@ -22,6 +23,9 @@ interface Props {
   visible: VisibleSatellite[];
   favorites: Set<number>;
   onToggleFavorite: (norad: number) => void;
+  /** Passes queued in the Pass Planner, soonest AOS first. */
+  plan: PlannedPass[];
+  onRemovePlanned: (norad: number, aos: string) => void;
   /** Current saved target, seeding the draft when the dialog opens. */
   initialSat: SatelliteSummary | null;
   initialRf: RFSelection;
@@ -40,18 +44,20 @@ function matches(name: string, noradId: number, query: string): boolean {
 
 /**
  * "Set a Satellite" modal (replaces the inline header selectors): pick a
- * satellite from a source tab — Visible now / Favorites / All (searchable);
- * a Pass plan source is a visible-but-disabled placeholder until the planner
- * lands — then pick one of its RF profiles. Save persists the pair as the
- * screen's target; Reset clears it. Mounted fresh on each open (the parent
- * renders it conditionally), so the draft seeds from props and Cancel simply
- * discards it.
+ * satellite from a source tab — Visible now / Favorites / Pass plan (queued
+ * from the Pass Planner, with a live countdown to each pass) / All
+ * (searchable) — then pick one of its RF profiles. Save persists the pair as
+ * the screen's target; Reset clears it. Mounted fresh on each open (the
+ * parent renders it conditionally), so the draft seeds from props and Cancel
+ * simply discards it.
  */
 export function SetSatelliteDialog({
   satellites,
   visible,
   favorites,
   onToggleFavorite,
+  plan,
+  onRemovePlanned,
   initialSat,
   initialRf,
   onCancel,
@@ -67,6 +73,14 @@ export function SetSatelliteDialog({
   // Keyed by norad so a stale frequency list never shows for another satellite.
   const [fetched, setFetched] = useState<{ norad: number; freqs: FrequencyRecord[] } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Live countdowns on the Pass plan tab — a second-level tick while visible.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (tab !== 'plan') return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [tab]);
 
   useEffect(() => {
     searchRef.current?.focus();
@@ -119,6 +133,10 @@ export function SetSatelliteDialog({
     () => satellites.filter((s) => matches(s.name, s.norad_id, query)),
     [satellites, query],
   );
+  const planShown = useMemo(
+    () => plan.filter((e) => matches(e.name, e.norad, query)),
+    [plan, query],
+  );
 
   function pickSat(sat: SatelliteSummary) {
     if (sat.norad_id === draftNorad) return;
@@ -157,6 +175,36 @@ export function SetSatelliteDialog({
     );
   }
 
+  // A planned row features the countdown to its pass; × unqueues it.
+  function renderPlanRow(entry: PlannedPass) {
+    const on = entry.norad === draftNorad;
+    const countdown = formatCountdown(entry.pass.aos, entry.pass.los, nowMs);
+    return (
+      <li key={`${entry.norad}-${entry.pass.aos}`}>
+        <div className={on ? `${styles.row} ${styles.rowOn}` : styles.row}>
+          <button
+            type="button"
+            className={styles.rowMain}
+            onClick={() => pickSat({ norad_id: entry.norad, name: entry.name })}
+          >
+            <span className={styles.rowName}>{entry.name}</span>
+            <span className={styles.rowMeta}>
+              {countdown} · {entry.pass.maxElevationDeg.toFixed(0)}°
+            </span>
+          </button>
+          <button
+            type="button"
+            className={styles.star}
+            aria-label="Remove from pass plan"
+            onClick={() => onRemovePlanned(entry.norad, entry.pass.aos)}
+          >
+            ×
+          </button>
+        </div>
+      </li>
+    );
+  }
+
   let rows;
   let emptyNote: string | null = null;
   let overflow = 0;
@@ -176,6 +224,13 @@ export function SetSatelliteDialog({
         favorites.size === 0
           ? 'No favorites yet — star a satellite to keep it here.'
           : 'No favorites match the search.';
+  } else if (tab === 'plan') {
+    rows = planShown.map(renderPlanRow);
+    if (rows.length === 0)
+      emptyNote =
+        plan.length === 0
+          ? 'No planned passes yet — add one from the Pass Planner.'
+          : 'No planned passes match the search.';
   } else {
     overflow = Math.max(0, allShown.length - ALL_TAB_ROW_CAP);
     rows = allShown.slice(0, ALL_TAB_ROW_CAP).map((s) => renderRow(s, `NORAD ${s.norad_id}`));
@@ -202,19 +257,13 @@ export function SetSatelliteDialog({
           <TabButton on={tab === 'favorites'} onClick={() => setTab('favorites')}>
             Favorites
           </TabButton>
+          <TabButton on={tab === 'plan'} onClick={() => setTab('plan')}>
+            Pass plan
+            {plan.length > 0 && <span className={styles.planCount}>{plan.length}</span>}
+          </TabButton>
           <TabButton on={tab === 'all'} onClick={() => setTab('all')}>
             All satellites
           </TabButton>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={false}
-            className={styles.tabDisabled}
-            disabled
-            title="Pick from planned passes — arrives with the pass planner"
-          >
-            Pass plan <span className={styles.soon}>soon</span>
-          </button>
         </div>
 
         <div className={styles.body}>

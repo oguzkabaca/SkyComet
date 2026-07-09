@@ -42,8 +42,7 @@
   align-self: flex-start;
 }
 
-.tab,
-.tabDisabled {
+.tab {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -68,19 +67,16 @@
   box-shadow: var(--sh-1);
 }
 
-.tabDisabled {
-  cursor: not-allowed;
-  color: var(--fg-faint);
-}
-
-.soon {
-  font-size: 9.5px;
+/* Queued-pass count on the Pass plan tab. */
+.planCount {
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  min-width: 16px;
+  text-align: center;
   border: 1px solid var(--border);
   border-radius: var(--r-pill);
-  padding: 0 6px;
+  padding: 0 4px;
 }
 
 /* --- body: picker left, RF right ------------------------------------------ */
