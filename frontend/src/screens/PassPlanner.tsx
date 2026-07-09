@@ -11,6 +11,7 @@ import {
   type SatelliteSchedule,
 } from '../lib/ipc/commands';
 import { PassScheduleChart, type SchedulePassRef } from '../viz/PassScheduleChart';
+import { PassDetailPanel } from './pass-planner/PassDetailPanel';
 import styles from './PassPlanner.module.css';
 
 /** §5.1 `schedule_min_max_el` — mirrored as the elevation input's initial value. */
@@ -190,6 +191,14 @@ export function PassPlanner() {
             </div>
           ) : null}
         </div>
+
+        {selected && (
+          <PassDetailPanel
+            key={`${selected.noradId}-${selected.pass.aos}`}
+            sel={selected}
+            onClose={() => setSelected(null)}
+          />
+        )}
       </div>
     </div>
   );
