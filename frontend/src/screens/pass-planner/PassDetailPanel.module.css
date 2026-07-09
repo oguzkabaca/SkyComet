@@ -1,30 +1,26 @@
-/* Sticky bottom detail — stays visible while the timeline rows scroll
-   behind it inside the panel's own scroll context. */
+/* Vertical detail card — lives in the column to the right of the timeline
+   (drops below it on narrow panels via the screen's container query). */
 .detail {
-  position: sticky;
-  bottom: 0;
-  z-index: 3;
-  flex: none;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px 20px 16px;
-  background: var(--bg-panel);
-  border-top: 1px solid var(--border);
+  padding: 16px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
 }
 
 .head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .headText {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -51,16 +47,10 @@
   flex-wrap: wrap;
 }
 
-.body {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 20px;
-  align-items: center;
-}
-
 .polarBox {
   display: flex;
   justify-content: center;
+  padding: 4px 0;
 }
 
 .placeholder {
@@ -74,8 +64,8 @@
 .stats {
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 14px 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
 }
 
 .stat {
@@ -93,17 +83,9 @@
 .statVal {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--fg);
   letter-spacing: -0.2px;
   font-variant-numeric: tabular-nums;
-}
-
-/* Narrow panel: stack the polar plot above the stats (container query on the
-   screen panel — the width depends on the sidebar state too). */
-@container (max-width: 640px) {
-  .body {
-    grid-template-columns: 1fr;
-  }
 }

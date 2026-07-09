@@ -238,70 +238,74 @@ export function PassPlanner() {
           </div>
         )}
 
-        <div className={styles.hero}>
-          {schedule !== null && soonRows.length > 0 && (
-            <PassScheduleChart
-              schedule={soonRows}
-              windowStartMs={nowMs}
-              windowHours={viewHours}
-              selected={selected ? { noradId: selected.noradId, aos: selected.pass.aos } : null}
-              onSelect={setSelected}
-            />
-          )}
-          {schedule !== null && soonRows.length === 0 && !loading && (
-            <div className={styles.emptyBox}>
-              <StatusLine>
-                {q !== ''
-                  ? 'No satellites match the filter.'
-                  : `No ${quality === 'all' ? '' : `${quality} `}passes starting in the next ${viewHours} h.`}
-              </StatusLine>
-            </div>
-          )}
+        <div className={styles.body}>
+          <div className={styles.heroCol}>
+            {schedule !== null && soonRows.length > 0 && (
+              <PassScheduleChart
+                schedule={soonRows}
+                windowStartMs={nowMs}
+                windowHours={viewHours}
+                selected={selected ? { noradId: selected.noradId, aos: selected.pass.aos } : null}
+                onSelect={setSelected}
+              />
+            )}
+            {schedule !== null && soonRows.length === 0 && !loading && (
+              <div className={styles.emptyBox}>
+                <StatusLine>
+                  {q !== ''
+                    ? 'No satellites match the filter.'
+                    : `No ${quality === 'all' ? '' : `${quality} `}passes starting in the next ${viewHours} h.`}
+                </StatusLine>
+              </div>
+            )}
 
-          {laterRows.length > 0 && (
-            <div className={styles.later}>
-              <button
-                type="button"
-                className={styles.laterToggle}
-                aria-expanded={laterOpen}
-                onClick={() => setLaterOpen((v) => !v)}
-              >
-                <span className={styles.laterChevron}>{laterOpen ? '▾' : '▸'}</span>
-                {laterRows.length} satellite{laterRows.length === 1 ? '' : 's'} later in the{' '}
-                {FETCH_HOURS} h window
-              </button>
-              {laterOpen && (
-                <div className={styles.laterList}>
-                  {laterRows.map((row) => (
-                    <button
-                      key={row.noradId}
-                      type="button"
-                      className={styles.laterRow}
-                      onClick={() =>
-                        setSelected({ noradId: row.noradId, name: row.name, pass: row.first })
-                      }
-                    >
-                      <span className={styles.laterName}>{row.name}</span>
-                      <span className={styles.laterMeta}>
-                        first pass {formatClock(new Date(row.first.aos).getTime())} · max el{' '}
-                        {row.first.maxElevationDeg.toFixed(0)}° · {row.count} pass
-                        {row.count === 1 ? '' : 'es'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {laterRows.length > 0 && (
+              <div className={styles.later}>
+                <button
+                  type="button"
+                  className={styles.laterToggle}
+                  aria-expanded={laterOpen}
+                  onClick={() => setLaterOpen((v) => !v)}
+                >
+                  <span className={styles.laterChevron}>{laterOpen ? '▾' : '▸'}</span>
+                  {laterRows.length} satellite{laterRows.length === 1 ? '' : 's'} later in the{' '}
+                  {FETCH_HOURS} h window
+                </button>
+                {laterOpen && (
+                  <div className={styles.laterList}>
+                    {laterRows.map((row) => (
+                      <button
+                        key={row.noradId}
+                        type="button"
+                        className={styles.laterRow}
+                        onClick={() =>
+                          setSelected({ noradId: row.noradId, name: row.name, pass: row.first })
+                        }
+                      >
+                        <span className={styles.laterName}>{row.name}</span>
+                        <span className={styles.laterMeta}>
+                          first pass {formatClock(new Date(row.first.aos).getTime())} · max el{' '}
+                          {row.first.maxElevationDeg.toFixed(0)}° · {row.count} pass
+                          {row.count === 1 ? '' : 'es'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {selected && (
+            <aside className={styles.detailCol}>
+              <PassDetailPanel
+                key={`${selected.noradId}-${selected.pass.aos}`}
+                sel={selected}
+                onClose={() => setSelected(null)}
+              />
+            </aside>
           )}
         </div>
-
-        {selected && (
-          <PassDetailPanel
-            key={`${selected.noradId}-${selected.pass.aos}`}
-            sel={selected}
-            onClose={() => setSelected(null)}
-          />
-        )}
       </div>
     </div>
   );

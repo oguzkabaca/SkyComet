@@ -9,8 +9,9 @@
   margin: -20px -24px;
 }
 
-/* Stacked regions: header/toolbar · (alerts) · schedule hero. The panel
-   scrolls when the satellite rows push past the viewport. */
+/* Stacked regions: header/toolbar · (alerts) · body (timeline | detail).
+   The panel itself never scrolls — the header stays put and the timeline
+   column scrolls internally, so the screen doesn't grow into a long page. */
 .panel {
   flex: 1;
   min-height: 0;
@@ -20,8 +21,8 @@
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--sh-1);
-  overflow-y: auto;
-  /* Container for future layout switches — the panel width depends on the
+  overflow: hidden;
+  /* Container for the body layout switch — the panel width depends on the
      sidebar state, not just the viewport (Quick Track lesson). */
   container-type: inline-size;
 }
@@ -122,11 +123,48 @@
   padding: 12px 20px 0;
 }
 
-/* ---------- schedule hero ---------- */
-.hero {
+/* ---------- body: timeline column | detail column ---------- */
+.body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  gap: 16px;
   padding: 12px 20px 16px;
+}
+
+/* The timeline (and the collapsed "later" group) scroll here, under the
+   chart's own sticky axis — the header and the detail column stay put. */
+.heroCol {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.detailCol {
+  flex: none;
+  width: 340px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Narrow panel: detail drops under the timeline (container query — the
+   panel width depends on the sidebar state too). */
+@container (max-width: 940px) {
+  .body {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .heroCol {
+    flex: none;
+    overflow-y: visible;
+  }
+
+  .detailCol {
+    width: auto;
+    overflow-y: visible;
+  }
 }
 
 .emptyBox {
@@ -147,7 +185,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 10px 4px;
+  padding: 12px 4px;
   background: none;
   border: none;
   font-family: var(--font-ui);
@@ -173,18 +211,25 @@
   padding-bottom: 8px;
 }
 
+/* Same visual language as the timeline rows: identical name column, UI font
+   throughout, hairline separators. */
 .laterRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
   align-items: baseline;
-  gap: 12px;
-  padding: 6px 4px 6px 22px;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 4px;
   background: none;
   border: none;
-  border-radius: var(--r-sm);
   font-family: var(--font-ui);
   text-align: left;
   cursor: pointer;
   min-width: 0;
+}
+
+.laterRow + .laterRow {
+  border-top: 1px solid var(--border-soft);
 }
 
 .laterRow:hover {
@@ -192,20 +237,18 @@
 }
 
 .laterName {
-  flex: none;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
 }
 
 .laterMeta {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

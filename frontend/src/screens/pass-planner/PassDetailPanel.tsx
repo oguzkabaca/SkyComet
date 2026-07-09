@@ -69,11 +69,10 @@ interface Props {
 }
 
 /**
- * Bottom detail panel for the selected schedule pass — the old
- * single-satellite deep dive (polar track + metrics + rotor feasibility)
- * relocated under the timeline. Sticky, so it stays visible while the
- * satellite rows scroll behind it. The parent keys this component by the
- * selected pass (fresh-mount pattern), so state starts clean per selection.
+ * Side detail card for the selected schedule pass — the old single-satellite
+ * deep dive (polar track + metrics + rotor feasibility) in the column next
+ * to the timeline. The parent keys this component by the selected pass
+ * (fresh-mount pattern), so state starts clean per selection.
  */
 export function PassDetailPanel({ sel, onClose }: Props) {
   const [track, setTrack] = useState<PassSample[] | null>(null);
@@ -118,37 +117,37 @@ export function PassDetailPanel({ sel, onClose }: Props) {
             NORAD {sel.noradId} · {formatDay(p.aos)}
           </span>
         </div>
-        <div className={styles.tags}>
-          {inProgress && <Tag tone="accent">In progress</Tag>}
-          <Tag tone={CLASSIFICATION_TONE[p.classification] ?? 'neutral'}>{p.classification}</Tag>
-          {feas && (
-            <Tag tone={ROTOR_TONE[feas.feasibility]}>
-              {ROTOR_LABEL[feas.feasibility]}
-              {feas.flipRecommended ? ' ⤾' : ''}
-            </Tag>
-          )}
-          <Button onClick={onClose}>Close</Button>
-        </div>
+        <Button onClick={onClose}>Close</Button>
       </div>
 
-      <div className={styles.body}>
-        <div className={styles.polarBox}>
-          {track && track.length > 1 ? (
-            <PolarPlot samples={track} />
-          ) : (
-            <div className={styles.placeholder}>
-              {error ? (
-                <StatusLine tone="error" role="alert">
-                  {error}
-                </StatusLine>
-              ) : (
-                <StatusLine role="status">Loading track…</StatusLine>
-              )}
-            </div>
-          )}
-        </div>
+      <div className={styles.tags}>
+        {inProgress && <Tag tone="accent">In progress</Tag>}
+        <Tag tone={CLASSIFICATION_TONE[p.classification] ?? 'neutral'}>{p.classification}</Tag>
+        {feas && (
+          <Tag tone={ROTOR_TONE[feas.feasibility]}>
+            {ROTOR_LABEL[feas.feasibility]}
+            {feas.flipRecommended ? ' ⤾' : ''}
+          </Tag>
+        )}
+      </div>
 
-        <dl className={styles.stats}>
+      <div className={styles.polarBox}>
+        {track && track.length > 1 ? (
+          <PolarPlot samples={track} />
+        ) : (
+          <div className={styles.placeholder}>
+            {error ? (
+              <StatusLine tone="error" role="alert">
+                {error}
+              </StatusLine>
+            ) : (
+              <StatusLine role="status">Loading track…</StatusLine>
+            )}
+          </div>
+        )}
+      </div>
+
+      <dl className={styles.stats}>
           <div className={styles.stat}>
             <dt className={styles.statLbl}>Maximum elevation</dt>
             <dd className={styles.statVal}>{formatDeg(p.maxElevationDeg)}</dd>
@@ -179,7 +178,6 @@ export function PassDetailPanel({ sel, onClose }: Props) {
             <dd className={styles.statVal}>{p.score.toFixed(2)}</dd>
           </div>
         </dl>
-      </div>
     </section>
   );
 }
