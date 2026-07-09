@@ -205,6 +205,9 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 | `min_elevation_deg` | 0 | degree | Default is the true horizon; adjustable in the UI (5°–10° amateur practice). A terrain horizon profile is added in F8. |
 | `polar_sample_step` | 5 | s | ~60–180 samples between AOS-LOS, a smooth SVG path. |
 | `hours_ahead_default` | 24 | hour | The roadmap "24h ≥ 4 passes" target. |
+| `hours_ahead_max` | 168 | hour | Input clamp for the single-satellite pass window (2026-07-04 audit item — `hours_ahead` was unbounded): the UI horizon field allows up to 7 days; anything larger is a client bug. |
+| `schedule_hours_max` | 48 | hour | All-sky schedule window clamp (§5.9): the batch scans every TLE-backed satellite (~350), so its budget is tighter than the single-satellite command. |
+| `schedule_min_max_el` | 10 | degree | §5.9 default max-elevation floor. Numerically equal to `marginal_threshold` (§5.6) by design: passes peaking below it are "poor" and, at ~350 satellites, flood the timeline (1500+ passes / 24 h). Semantically a UI filter default, not a classification band. |
 | `pass_lookback_minutes` | 30 | min | `list_passes` sliding window (§5.2 note): scan starts this far before "now" so an in-progress pass keeps its real AOS; covers LEO/MEO pass durations. |
 | `score_duration_saturate` | 600 | s | No extra points above 10 min — fair to a short pass vs an overhead pass. |
 | `score_norm_denominator` | 8100 | — | 90² = 8100 for max_el²; normalizes the score to [0, 1]. |
@@ -340,6 +343,15 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 - **Status:** **neglected** (F4-F7).
 - **Rationale:** the visible elevation at the horizon is really ~0.5° higher (Bennett 1982 formula), ~0.1° at 5°. Within the F2 tolerance (< 0.5°). Practically zero impact for amateur-radio operation.
 - **Reconsideration:** in F8+ together with terrain horizon (the Bennett formula is added here if needed).
+
+### 5.9 All-sky schedule (Pass Planner timeline)
+
+- **Purpose:** every TLE-backed satellite's passes over `[now, now + H]` on one time scale — the Pass Planner hero view.
+- **Input:** `(hours_ahead ≤ schedule_hours_max, min_elevation_deg, min_max_elevation_deg)`.
+- **Output:** per-satellite pass lists; satellites sorted by their first AOS. In-progress passes are included with their real (past) AOS (§5.2 sliding-window note).
+- **Method:** one `find_passes_overlapping_now` run per satellite — §5.2/§5.3/§5.4 formulas unchanged, no new math. Passes with `max_el < min_max_elevation_deg` are dropped and satellites left with no passes are omitted. Missing/unparseable TLEs are skipped best-effort (same policy as the "Visible now" batch, §12).
+- **Cost:** ~350 satellites × (24 h / `coarse_step` 30 s) ≈ 10⁶ propagations per refresh → the `list_all_passes` command runs the batch on a blocking worker thread, on demand only (no periodic loop).
+- **Added:** Pass Planner sprint (2026-07-09). **Status:** active.
 
 ---
 
@@ -1198,6 +1210,7 @@ invariants asserted by the `core/tracking.rs` unit tests (not a single fabricate
 
 ## Change history
 
+- 2026-07-09 — Pass Planner sprint: §5.9 added — all-sky pass schedule (batch `find_passes_overlapping_now` across every TLE-backed satellite; no new math). §5.1 gained `hours_ahead_max` (168 h), `schedule_hours_max` (48 h) and `schedule_min_max_el` (10°); input clamps added to the pass commands (2026-07-04 audit item).
 - 2026-07-06 — Quick Track redesign (ADR 0013, M3): §7.7 added — satellite footprint (horizon circle) via Earth-central angle λ = acos(R⊕/(R⊕+h)) + spherical destination-point ring; `FOOTPRINT_POINTS_DEFAULT = 72`. Pure `core/orbit/ground_track.rs::footprint_ring`, exposed through `get_ground_track`.
 - 2026-07-08 — Dynamic TLE sync: §7.1 gained `tle_sync_max_age_hours` (24 h) — runtime CelesTrak refresh threshold for `Dataset::Tle` (startup auto-sync + catalog "Sync now" chain). Root cause: TLEs were only ever seeded from the bundled snapshot and aged indefinitely (observed 1000+ h).
 - 2026-07-06 — Quick Track redesign (ADR 0013, M1): §12 added — live tracking snapshot enrichment: range-rate (central difference, Δt = 1 s, §6.2 sign convention), sub-point altitude (§4/§7.2 reuse), pass phase (elevation + range-rate sign). No new propagation model; live Doppler reuses §6.2.

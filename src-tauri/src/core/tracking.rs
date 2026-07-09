@@ -7,6 +7,7 @@ use thiserror::Error;
 use super::db::{Database, DbError};
 use super::location::{self, Location, LocationError};
 use super::orbit::coordinates::{ecef_to_geodetic, teme_to_az_el, teme_to_ecef};
+use super::orbit::pass_planner::{self, Pass, PassSearchParams};
 use super::orbit::sgp4_engine::Propagator;
 use super::orbit::OrbitError;
 use super::tle::cache::TleCache;
@@ -225,6 +226,60 @@ pub fn visible_satellites(
     Ok(out)
 }
 
+/// One satellite's upcoming passes for the all-sky schedule (Pass Planner
+/// timeline). Passes are chronological (`find_passes` scan order).
+#[derive(Debug, Clone, Serialize)]
+pub struct SatelliteSchedule {
+    pub norad_id: u32,
+    pub name: String,
+    pub passes: Vec<Pass>,
+}
+
+/// Pass schedule for every TLE-backed satellite over `[now, until]` (canon
+/// §5.9). In-progress passes are included with their real AOS (§5.2 sliding
+/// window). Passes peaking below `min_max_elevation_deg` are dropped and
+/// satellites left with no passes are omitted; the result is sorted by each
+/// satellite's first AOS. Missing/unparseable TLEs are skipped best-effort
+/// (`visible_satellites` policy); no location configured yields an empty
+/// schedule. Heavy — callers run it off the UI thread.
+pub fn sky_schedule(
+    db: &Database,
+    cache: &TleCache,
+    now: DateTime<Utc>,
+    until: DateTime<Utc>,
+    search: PassSearchParams,
+    min_max_elevation_deg: f64,
+) -> Result<Vec<SatelliteSchedule>, TrackingError> {
+    let Some(observer) = location::load_location(db)? else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for (norad, name) in super::tle::repo::list_summaries(db)? {
+        let Some(record) = cache.get_or_load(db, norad)? else {
+            continue;
+        };
+        let Ok(propagator) = Propagator::from_tle(&record) else {
+            continue;
+        };
+        // A single bad elset must not sink the whole schedule — skip it.
+        let Ok(mut passes) =
+            pass_planner::find_passes_overlapping_now(&propagator, &observer, now, until, search)
+        else {
+            continue;
+        };
+        passes.retain(|p| p.max_elevation_deg >= min_max_elevation_deg);
+        if !passes.is_empty() {
+            out.push(SatelliteSchedule {
+                norad_id: norad,
+                name,
+                passes,
+            });
+        }
+    }
+    out.sort_by_key(|s| s.passes.first().map(|p| p.aos));
+    Ok(out)
+}
+
 /// Slant range (km) to the satellite at `t` — helper for the range-rate central
 /// difference in `snapshot_from_parts`.
 fn slant_range_km(
@@ -380,6 +435,62 @@ mod tests {
         for v in &list {
             assert!(v.elevation_deg >= 0.0);
         }
+    }
+
+    #[test]
+    fn sky_schedule_needs_location() {
+        let db = Database::open_in_memory().unwrap();
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        tle_repo_test::upsert(&db, &rec, "test").unwrap();
+        let cache = TleCache::new();
+        // No location saved → empty schedule, not an error (§5.9).
+        let now = Utc::now();
+        let schedule = sky_schedule(
+            &db,
+            &cache,
+            now,
+            now + chrono::Duration::hours(24),
+            PassSearchParams::default(),
+            0.0,
+        )
+        .unwrap();
+        assert!(schedule.is_empty());
+    }
+
+    #[test]
+    fn sky_schedule_filters_by_max_elevation() {
+        let db = Database::open_in_memory().unwrap();
+        location::save_location(&db, &Location::new(41.0082, 28.9784, 35.0).unwrap()).unwrap();
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        tle_repo_test::upsert(&db, &rec, "test").unwrap();
+        let cache = TleCache::new();
+        let now = rec.epoch;
+        let until = now + chrono::Duration::hours(24);
+
+        // Unfiltered: ISS yields multiple passes over Istanbul in 24 h.
+        let all = sky_schedule(&db, &cache, now, until, PassSearchParams::default(), 0.0).unwrap();
+        let iss = all.iter().find(|s| s.norad_id == 25544).expect("ISS entry");
+        assert!(iss.passes.len() >= 4, "got {} passes", iss.passes.len());
+
+        // Max-el floor: every surviving pass peaks at or above it, and the
+        // filtered set is a subset of the unfiltered one.
+        let floor = 10.0;
+        let filtered =
+            sky_schedule(&db, &cache, now, until, PassSearchParams::default(), floor).unwrap();
+        for sat in &filtered {
+            assert!(!sat.passes.is_empty(), "empty satellite leaked");
+            for p in &sat.passes {
+                assert!(p.max_elevation_deg >= floor, "floor leaked: {:?}", p.aos);
+            }
+        }
+        let filtered_count: usize = filtered.iter().map(|s| s.passes.len()).sum();
+        let all_count: usize = all.iter().map(|s| s.passes.len()).sum();
+        assert!(filtered_count <= all_count);
+
+        // An impossible floor empties the schedule entirely.
+        let none =
+            sky_schedule(&db, &cache, now, until, PassSearchParams::default(), 90.1).unwrap();
+        assert!(none.is_empty());
     }
 
     #[test]

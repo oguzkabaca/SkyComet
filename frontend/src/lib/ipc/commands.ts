@@ -144,6 +144,30 @@ export async function listPasses(
   });
 }
 
+/** One satellite's rows in the all-sky schedule (canon §5.9). */
+export interface SatelliteSchedule {
+  noradId: number;
+  name: string;
+  passes: Pass[];
+}
+
+/**
+ * All-sky pass schedule for the Pass Planner timeline: every TLE-backed
+ * satellite's passes over the window, in-progress ones included. Heavy —
+ * the backend batches it on a worker thread; expect seconds, not millis.
+ */
+export async function listAllPasses(
+  hoursAhead?: number,
+  minElevationDeg?: number,
+  minMaxElevationDeg?: number,
+): Promise<SatelliteSchedule[]> {
+  return invoke<SatelliteSchedule[]>('list_all_passes', {
+    hoursAhead: hoursAhead ?? null,
+    minElevationDeg: minElevationDeg ?? null,
+    minMaxElevationDeg: minMaxElevationDeg ?? null,
+  });
+}
+
 export async function getPassTrack(
   norad: number,
   pass: Pick<Pass, 'aos' | 'tca' | 'los' | 'maxElevationDeg'>,

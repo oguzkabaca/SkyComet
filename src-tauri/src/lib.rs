@@ -79,6 +79,7 @@ pub fn run() {
             commands::tracking::get_tracking_snapshot,
             commands::tracking::list_visible_satellites,
             commands::passes::list_passes,
+            commands::passes::list_all_passes,
             commands::passes::get_pass_track,
             commands::catalog::list_satellites_page,
             commands::catalog::search_satellites,

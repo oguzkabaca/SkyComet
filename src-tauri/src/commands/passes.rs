@@ -12,6 +12,7 @@ use crate::core::orbit::pass_planner::{
 };
 use crate::core::orbit::sgp4_engine::Propagator;
 use crate::core::tle::cache::TleCache;
+use crate::core::tracking;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +55,15 @@ impl From<Pass> for PassDto {
             classification,
         }
     }
+}
+
+/// One satellite's rows in the all-sky schedule (canon §5.9).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SatelliteScheduleDto {
+    pub norad_id: u32,
+    pub name: String,
+    pub passes: Vec<PassDto>,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,11 +113,17 @@ pub fn list_passes(
             message: format!("no TLE for norad {norad}"),
         })?;
     let propagator = Propagator::from_tle(&record).map_err(|e| map_err("orbit_error", e))?;
-    let hours = hours_ahead.unwrap_or(pp_params::HOURS_AHEAD_DEFAULT as u32) as i64;
+    // Input clamps (canon §5.1 `hours_ahead_max`, 2026-07-04 audit item):
+    // IPC arguments are untrusted; an oversized window is a client bug, not
+    // a reason to scan a year of orbits.
+    let hours = (hours_ahead.unwrap_or(pp_params::HOURS_AHEAD_DEFAULT as u32) as i64)
+        .clamp(1, pp_params::HOURS_AHEAD_MAX);
     let now = Utc::now();
     let until = now + Duration::hours(hours);
     let search = PassSearchParams {
-        min_elevation_deg: min_elevation_deg.unwrap_or(pp_params::DEFAULT_MIN_ELEVATION_DEG),
+        min_elevation_deg: min_elevation_deg
+            .unwrap_or(pp_params::DEFAULT_MIN_ELEVATION_DEG)
+            .clamp(0.0, 89.0),
         coarse_step_sec: pp_params::COARSE_STEP_SEC,
     };
     // Overlapping window (canon §5.2 sliding-window note): a satellite above
@@ -169,6 +185,52 @@ pub fn get_pass_track(
     )
     .map_err(|e| map_err("orbit_error", e))?;
     Ok(samples.into_iter().map(PassSampleDto::from).collect())
+}
+
+/// All-sky pass schedule (canon §5.9) — the Pass Planner timeline hero.
+/// Heavy (~350 satellites × 24 h coarse scan ≈ 10⁶ propagations), so the
+/// batch runs on a blocking worker; the UI thread never stalls. On demand
+/// only — the frontend triggers it explicitly, there is no periodic loop.
+#[tauri::command]
+pub async fn list_all_passes(
+    db: State<'_, Database>,
+    cache: State<'_, Arc<TleCache>>,
+    hours_ahead: Option<u32>,
+    min_elevation_deg: Option<f64>,
+    min_max_elevation_deg: Option<f64>,
+) -> Result<Vec<SatelliteScheduleDto>, CommandError> {
+    let db = db.inner().clone();
+    let cache = Arc::clone(cache.inner());
+    // Clamps mirror list_passes; the window cap is tighter (§5.1
+    // `schedule_hours_max`) because the cost multiplies across the catalog.
+    let hours = (hours_ahead.unwrap_or(pp_params::HOURS_AHEAD_DEFAULT as u32) as i64)
+        .clamp(1, pp_params::SCHEDULE_HOURS_MAX);
+    let search = PassSearchParams {
+        min_elevation_deg: min_elevation_deg
+            .unwrap_or(pp_params::DEFAULT_MIN_ELEVATION_DEG)
+            .clamp(0.0, 89.0),
+        coarse_step_sec: pp_params::COARSE_STEP_SEC,
+    };
+    let min_max_el = min_max_elevation_deg
+        .unwrap_or(pp_params::SCHEDULE_MIN_MAX_EL_DEG)
+        .clamp(0.0, 90.0);
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let now = Utc::now();
+        let until = now + Duration::hours(hours);
+        tracking::sky_schedule(&db, &cache, now, until, search, min_max_el)
+    });
+    let schedule = task
+        .await
+        .map_err(|e| map_err("worker_error", e))?
+        .map_err(CommandError::from)?;
+    Ok(schedule
+        .into_iter()
+        .map(|s| SatelliteScheduleDto {
+            norad_id: s.norad_id,
+            name: s.name,
+            passes: s.passes.into_iter().map(PassDto::from).collect(),
+        })
+        .collect())
 }
 
 fn parse_rfc3339(s: &str, field: &str) -> Result<DateTime<Utc>, CommandError> {

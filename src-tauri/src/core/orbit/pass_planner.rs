@@ -30,6 +30,16 @@ pub mod params {
     pub const POLAR_SAMPLE_STEP_SEC: i64 = 5;
     /// Default look-ahead window when callers don't override.
     pub const HOURS_AHEAD_DEFAULT: i64 = 24;
+    /// Input clamp for the single-satellite pass window (§5.1
+    /// `hours_ahead_max`) — the UI horizon field allows up to 7 days.
+    pub const HOURS_AHEAD_MAX: i64 = 168;
+    /// Window clamp for the all-sky schedule (§5.9): the batch scans every
+    /// TLE-backed satellite, so its budget is tighter than single-satellite.
+    pub const SCHEDULE_HOURS_MAX: i64 = 48;
+    /// Default max-elevation floor for the all-sky schedule (§5.1
+    /// `schedule_min_max_el`). Equal to MARGINAL_THRESHOLD_DEG by design but
+    /// semantically a UI filter default, not a classification band.
+    pub const SCHEDULE_MIN_MAX_EL_DEG: f64 = 10.0;
     /// Look-back from "now" so a pass already in progress is found with its
     /// real AOS instead of being dropped by the §5.2 half-pass rule. Covers
     /// LEO/MEO pass durations; a satellite above the horizon longer than this
