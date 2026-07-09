@@ -154,28 +154,30 @@ export function PassPlanner() {
 
   return (
     <div className={styles.screen}>
-      <header className={styles.head}>
-        <div>
-          <h1 className={styles.title}>
-            Pass Planner
-            {selectedSat && (
-              <span className={styles.target}>
-                {selectedSat.name} · {selectedSat.norad_id}
-              </span>
-            )}
-          </h1>
-          <p className={styles.sub}>
-            Next <b>{hoursAhead}</b> h · minimum elevation <b>{minElevation}°</b>
-            {passes.length > 0 && (
-              <>
-                {' · '}
-                <b>{passes.length}</b> passes
-              </>
-            )}
-          </p>
-        </div>
+      <div className={styles.panel}>
+        <header className={styles.head}>
+          <div className={styles.headText}>
+            <span className={styles.eyebrow}>Pass planning</span>
+            <h1 className={styles.title}>
+              Pass Planner
+              {selectedSat && (
+                <span className={styles.target}>
+                  {selectedSat.name} · {selectedSat.norad_id}
+                </span>
+              )}
+            </h1>
+            <p className={styles.sub}>
+              Next <b>{hoursAhead}</b> h · minimum elevation <b>{minElevation}°</b>
+              {passes.length > 0 && (
+                <>
+                  {' · '}
+                  <b>{passes.length}</b> passes
+                </>
+              )}
+            </p>
+          </div>
 
-        <div className={styles.toolbar}>
+          <div className={styles.toolbar}>
           <Field label="Satellite" className={styles.grow}>
             <select value={selected} onChange={handleSatChange}>
               <option value="">— select —</option>
@@ -205,119 +207,131 @@ export function PassPlanner() {
               onChange={(e) => setMinElevation(Number(e.target.value) || 0)}
             />
           </Field>
-          <Button variant="primary" onClick={handleSearch} disabled={selected === '' || loading}>
-            {loading ? 'Calculating…' : 'Find passes'}
-          </Button>
-        </div>
-      </header>
+            <Button
+              variant="primary"
+              onClick={handleSearch}
+              disabled={selected === '' || loading}
+            >
+              {loading ? 'Calculating…' : 'Find passes'}
+            </Button>
+          </div>
+        </header>
 
-      {error && (
-        <StatusLine tone="error" role="alert">
-          {error}
-        </StatusLine>
-      )}
-      {!error && passes.length === 0 && !loading && selected !== '' && (
-        <StatusLine>No passes computed yet. Press "Find passes".</StatusLine>
-      )}
-
-      <div className={styles.content}>
-        <Card title="Sky view" className={styles.skyCard}>
-          {activePass ? (
-            <div className={styles.skyWrap}>
-              <div className={styles.polarBox}>
-                {track && track.length > 1 ? (
-                  <PolarPlot samples={track} />
-                ) : (
-                  <div className={styles.skyPlaceholder}>
-                    <StatusLine>Loading track…</StatusLine>
-                  </div>
-                )}
-              </div>
-              <dl className={styles.passmeta}>
-                <div className={styles.metaRow}>
-                  <span className={styles.metaLbl}>Maximum elevation</span>
-                  <span className={styles.metaVal}>{formatDeg(activePass.maxElevationDeg)}</span>
-                </div>
-                <div className={styles.metaRow}>
-                  <span className={styles.metaLbl}>Duration</span>
-                  <span className={styles.metaVal}>{formatDuration(activePass.durationSeconds)}</span>
-                </div>
-                <div className={styles.metaRow}>
-                  <span className={styles.metaLbl}>Window</span>
-                  <span className={`${styles.metaVal} ${styles.metaSm}`}>
-                    {formatTime(activePass.aos)} → {formatTime(activePass.los)}
-                  </span>
-                </div>
-                <div className={styles.metaRow}>
-                  <span className={styles.metaLbl}>Azimuth</span>
-                  <span className={`${styles.metaVal} ${styles.metaSm}`}>
-                    {formatDeg(activePass.aosAzimuthDeg, 0)} → {formatDeg(activePass.losAzimuthDeg, 0)}
-                  </span>
-                </div>
-              </dl>
-            </div>
-          ) : (
-            <div className={styles.skyPlaceholder}>
-              <StatusLine>Select a pass row to see its polar plot.</StatusLine>
-            </div>
-          )}
-        </Card>
-
-        <section className={styles.listCard}>
-          <div className={styles.passHead}>
-            <span className={styles.passTtl}>Upcoming passes</span>
-            {passes.length > 0 && (
-              <span className={styles.count}>
-                <b>{passes.length}</b> in next {hoursAhead} h
-              </span>
+        {(error || (passes.length === 0 && !loading && selected !== '')) && (
+          <div className={styles.alerts}>
+            {error && (
+              <StatusLine tone="error" role="alert">
+                {error}
+              </StatusLine>
+            )}
+            {!error && passes.length === 0 && !loading && selected !== '' && (
+              <StatusLine>No passes computed yet. Press "Find passes".</StatusLine>
             )}
           </div>
-          <div className={styles.chipbar}>
-            <span className={styles.chipOn}>{hoursAhead} h</span>
-            <span className={styles.chipOn}>El ≥ {minElevation}°</span>
-          </div>
-          <div className={styles.rows}>
-            {passes.map((p, i) => (
-              <div
-                key={`${p.aos}-${i}`}
-                className={i === activePassIdx ? `${styles.row} ${styles.rowOn}` : styles.row}
-                onClick={() => void handleSelectPass(i)}
-              >
-                <div className={styles.sat}>
-                  <div className={styles.nm}>{formatLocal(p.aos)}</div>
-                  <div className={styles.id}>
-                    {compassFromAz(p.aosAzimuthDeg)} → {compassFromAz(p.losAzimuthDeg)}
-                  </div>
-                </div>
-                <div className={styles.col}>
-                  <span className={styles.k}>Max el</span>
-                  <span className={styles.v}>{formatDeg(p.maxElevationDeg)}</span>
-                </div>
-                <div className={styles.col}>
-                  <span className={styles.k}>Duration</span>
-                  <span className={`${styles.v} ${styles.vMuted}`}>
-                    {formatDuration(p.durationSeconds)}
-                  </span>
-                </div>
-                <div className={styles.tagStack}>
-                  <Tag tone={CLASSIFICATION_TONE[p.classification] ?? 'neutral'}>
-                    {p.classification}
-                  </Tag>
-                  {feasByAos[p.aos] && (
-                    <Tag tone={ROTOR_TONE[feasByAos[p.aos].feasibility]}>
-                      {ROTOR_LABEL[feasByAos[p.aos].feasibility]}
-                      {feasByAos[p.aos].flipRecommended ? ' ⤾' : ''}
-                    </Tag>
+        )}
+
+        <div className={styles.content}>
+          <Card title="Sky view" className={styles.skyCard}>
+            {activePass ? (
+              <div className={styles.skyWrap}>
+                <div className={styles.polarBox}>
+                  {track && track.length > 1 ? (
+                    <PolarPlot samples={track} />
+                  ) : (
+                    <div className={styles.skyPlaceholder}>
+                      <StatusLine>Loading track…</StatusLine>
+                    </div>
                   )}
                 </div>
-                <div className={styles.score}>
-                  <span className={styles.sm}>Score</span>
-                  {p.score.toFixed(2)}
-                </div>
+                <dl className={styles.passmeta}>
+                  <div className={styles.metaRow}>
+                    <span className={styles.metaLbl}>Maximum elevation</span>
+                    <span className={styles.metaVal}>{formatDeg(activePass.maxElevationDeg)}</span>
+                  </div>
+                  <div className={styles.metaRow}>
+                    <span className={styles.metaLbl}>Duration</span>
+                    <span className={styles.metaVal}>
+                      {formatDuration(activePass.durationSeconds)}
+                    </span>
+                  </div>
+                  <div className={styles.metaRow}>
+                    <span className={styles.metaLbl}>Window</span>
+                    <span className={`${styles.metaVal} ${styles.metaSm}`}>
+                      {formatTime(activePass.aos)} → {formatTime(activePass.los)}
+                    </span>
+                  </div>
+                  <div className={styles.metaRow}>
+                    <span className={styles.metaLbl}>Azimuth</span>
+                    <span className={`${styles.metaVal} ${styles.metaSm}`}>
+                      {formatDeg(activePass.aosAzimuthDeg, 0)} →{' '}
+                      {formatDeg(activePass.losAzimuthDeg, 0)}
+                    </span>
+                  </div>
+                </dl>
               </div>
-            ))}
-          </div>
-        </section>
+            ) : (
+              <div className={styles.skyPlaceholder}>
+                <StatusLine>Select a pass row to see its polar plot.</StatusLine>
+              </div>
+            )}
+          </Card>
+
+          <section className={styles.listCard}>
+            <div className={styles.passHead}>
+              <span className={styles.passTtl}>Upcoming passes</span>
+              {passes.length > 0 && (
+                <span className={styles.count}>
+                  <b>{passes.length}</b> in next {hoursAhead} h
+                </span>
+              )}
+            </div>
+            <div className={styles.chipbar}>
+              <span className={styles.chipOn}>{hoursAhead} h</span>
+              <span className={styles.chipOn}>El ≥ {minElevation}°</span>
+            </div>
+            <div className={styles.rows}>
+              {passes.map((p, i) => (
+                <div
+                  key={`${p.aos}-${i}`}
+                  className={i === activePassIdx ? `${styles.row} ${styles.rowOn}` : styles.row}
+                  onClick={() => void handleSelectPass(i)}
+                >
+                  <div className={styles.sat}>
+                    <div className={styles.nm}>{formatLocal(p.aos)}</div>
+                    <div className={styles.id}>
+                      {compassFromAz(p.aosAzimuthDeg)} → {compassFromAz(p.losAzimuthDeg)}
+                    </div>
+                  </div>
+                  <div className={styles.col}>
+                    <span className={styles.k}>Max el</span>
+                    <span className={styles.v}>{formatDeg(p.maxElevationDeg)}</span>
+                  </div>
+                  <div className={styles.col}>
+                    <span className={styles.k}>Duration</span>
+                    <span className={`${styles.v} ${styles.vMuted}`}>
+                      {formatDuration(p.durationSeconds)}
+                    </span>
+                  </div>
+                  <div className={styles.tagStack}>
+                    <Tag tone={CLASSIFICATION_TONE[p.classification] ?? 'neutral'}>
+                      {p.classification}
+                    </Tag>
+                    {feasByAos[p.aos] && (
+                      <Tag tone={ROTOR_TONE[feasByAos[p.aos].feasibility]}>
+                        {ROTOR_LABEL[feasByAos[p.aos].feasibility]}
+                        {feasByAos[p.aos].flipRecommended ? ' ⤾' : ''}
+                      </Tag>
+                    )}
+                  </div>
+                  <div className={styles.score}>
+                    <span className={styles.sm}>Score</span>
+                    {p.score.toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
