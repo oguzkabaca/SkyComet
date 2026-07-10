@@ -5,7 +5,6 @@ description = "Skycomet — amateur radio satellite ground station"
 authors = ["Oguz Kabaca <kabacaoguzkbc@gmail.com>"]
 edition = "2021"
 rust-version = "1.85"
-default-run = "skycomet"
 
 [lib]
 name = "skycomet_lib"

@@ -69,9 +69,9 @@ impl Database {
 pub fn resolve_db_path(app_data_dir: Option<PathBuf>) -> DbResult<PathBuf> {
     if cfg!(debug_assertions) {
         // Anchor dev DB on the workspace root (one level above the src-tauri
-        // crate) so it is independent of the current working directory. This
-        // keeps `cargo tauri dev` (CWD=src-tauri) and `cargo run --bin seed_tle`
-        // (CWD=worktree root) pointing at the same file.
+        // crate) so it is independent of the current working directory —
+        // `cargo tauri dev` (CWD=src-tauri) and root-level tooling point at
+        // the same file.
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let workspace_root = manifest_dir
             .parent()
