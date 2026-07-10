@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
+import skycometMark from '../assets/skycomet-mark.png';
 import { findCrumbs, type ScreenId } from '../nav';
 import { useRealtime } from '../stores/useRealtime';
 import styles from './TitleBar.module.css';
@@ -33,13 +34,7 @@ export function TitleBar({ active }: { active: ScreenId }) {
   return (
     <header className={styles.titlebar} data-tauri-drag-region>
       <div className={styles.brand} data-tauri-drag-region>
-        <span className={styles.mark} aria-hidden="true">
-          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-            <circle cx="9.5" cy="4.5" r="2.6" fill="white" />
-            <path d="M2 12 L8 6" stroke="white" strokeWidth="1.4" strokeLinecap="round" opacity="0.75" />
-            <path d="M3.5 11.5 L7 8" stroke="white" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
-          </svg>
-        </span>
+        <img src={skycometMark} alt="" className={styles.mark} />
         <span className={styles.name}>Skycomet</span>
       </div>
 
