@@ -41,7 +41,6 @@ export function TitleBar({ active }: { active: ScreenId }) {
           </svg>
         </span>
         <span className={styles.name}>Skycomet</span>
-        <span className={styles.phase}>v2 · Phase 7</span>
       </div>
 
       <div className={styles.crumbs} data-tauri-drag-region>

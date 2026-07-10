@@ -35,17 +35,6 @@
   color: var(--fg);
   line-height: 1;
 }
-.phase {
-  margin-left: 4px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--fg-dim);
-  background: var(--bg-inset);
-  border: 1px solid var(--border-soft);
-  padding: 2px 8px;
-  border-radius: var(--r-pill);
-}
-
 .crumbs {
   font-size: 13px;
   color: var(--fg-dim);
