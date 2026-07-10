@@ -64,6 +64,17 @@ flowchart LR
 SkyComet remains useful offline after its embedded catalog has been installed. Network sync
 refreshes satellite metadata, TLE data and space weather when a connection is available.
 
+## Usage
+
+1. **Set the station** — save your observer location and station profile in Settings.
+2. **Refresh orbital data** — use Catalog sync when a network connection is available.
+3. **Choose the opportunity** — scan the all-sky schedule or inspect one satellite in depth.
+4. **Validate the station** — review RF margin, space weather and rotor feasibility.
+5. **Prepare the target** — add the pass to the plan and open it from Quick Track.
+6. **Track** — start software tracking or enable rotor-assisted tracking when hardware is ready.
+
+No API key or `.env` file is required for the core pass-planning, RF and tracking workflow.
+
 ## What makes it different
 
 ### Decision-first, not data-first
@@ -84,19 +95,32 @@ The production target is a single Windows executable. Python and Node.js are not
 runtime, there is no local web server or sidecar process, and operational data stays in a local
 SQLite database.
 
-## Project status
+## Technology stack
+
+| Layer | Technology | Responsibility |
+|---|---|---|
+| Desktop shell | Tauri v2 | Native window, lifecycle, IPC and packaging |
+| Core | Rust | Orbit propagation, RF analysis, synchronization and rotor logic |
+| Interface | React + TypeScript | Operator workflows, state and visualizations |
+| Data | SQLite | Local station settings, catalog data, TLEs and runtime metadata |
+| Realtime | Tauri `emit` events | 500 ms tracking updates without a local web service |
+| External data | CelesTrak, SatNOGS, NOAA/SWPC | Refreshable public orbital, radio and weather data |
+
+## Project status and verification
 
 SkyComet is currently a **development preview**. The software workflow is feature-complete and is
 actively refined through live Windows/WebView2 testing.
 
-- **Automated verification:** 269 unit tests and 2 integration tests, plus `rustfmt`,
-  `clippy -D warnings`, ESLint and a production frontend build.
-- **Numeric verification:** formulas, constants, tolerances and sanity values are documented in
-  [the calculation canon](docs/calculations.md) and covered by regression tests.
-- **Platform verification:** Windows is the active development and manual-test platform.
-  macOS and Linux builds have not been validated.
-- **Hardware verification:** the GS-232 serial backend is covered by mock-transport tests but has
-  not yet been validated with a physical rotator. Treat hardware control as experimental.
+| Area | Current evidence | Status |
+|---|---|---|
+| Automated behavior | 269 unit tests + 2 integration tests | Verified in CI |
+| Numeric models | Canonical sanity values and regression tests | Verified |
+| Windows/WebView2 | Continuous development and live operator review | Verified |
+| macOS and Linux | No maintained build or manual validation yet | Unverified |
+| Physical GS-232 rotor | Mock-transport and protocol tests only | Experimental |
+
+Formulas, constants, tolerances and sanity values are documented in
+[the calculation canon](docs/calculations.md).
 
 ## Build the development preview
 
@@ -125,6 +149,16 @@ cargo tauri build
 Development data is stored in `./dev-data/skycomet.db`. Production data is stored in the operating
 system's application-data directory; see [the database documentation](docs/03-database.md).
 
+## Deployment
+
+```powershell
+cargo tauri build
+```
+
+Tauri produces the release executable and Windows installer bundles under
+`src-tauri/target/release/bundle/`. Release builds embed the frontend, catalog snapshot and required
+application resources; Python, Node.js and a sidecar service are not shipped with the product.
+
 ## Quality gate
 
 ```powershell
@@ -138,18 +172,25 @@ npm run lint
 npm run build
 ```
 
-## Architecture at a glance
+## System architecture
 
 SkyComet is built with **Rust, Tauri v2, React and TypeScript**.
 
-```text
-frontend/                 React interface and visualizations
-        │ invoke / emit
-src-tauri/src/commands/   Tauri IPC boundary
-        │
-src-tauri/src/core/       Tauri-independent orbit, RF, data and rotor logic
-        │
-SQLite + external sync    Local runtime state and refreshable public datasets
+```mermaid
+flowchart TB
+    subgraph APP["SkyComet desktop application"]
+        UI["React + TypeScript UI"]
+        IPC["Tauri invoke / emit boundary"]
+        CORE["Rust core<br/>Orbit · RF · Sync · Rotor"]
+        DB[("SQLite runtime state")]
+        ROTOR["GS-232 serial rotor"]
+        UI <--> IPC
+        IPC --> CORE
+        CORE <--> DB
+        CORE --> ROTOR
+    end
+
+    SOURCES["CelesTrak · SatNOGS · NOAA/SWPC"] -->|"refresh when online"| CORE
 ```
 
 The core does not depend on Tauri. The frontend communicates with the desktop backend only through
@@ -157,7 +198,72 @@ typed `invoke` and `emit` messages—there is no REST or WebSocket layer. Read t
 [architecture](docs/01-architecture.md), [database policy](docs/03-database.md),
 [code conventions](docs/04-conventions.md) and [decision records](docs/decisions/) for details.
 
-## Data sources and attribution
+## Live tracking sequence
+
+```mermaid
+sequenceDiagram
+    actor Operator
+    participant UI as React UI
+    participant IPC as Tauri command layer
+    participant Core as Rust tracking core
+    participant DB as SQLite
+
+    Operator->>UI: Start tracking a satellite
+    UI->>IPC: start_tracking(norad)
+    IPC->>DB: Load station and current TLE
+    IPC-->>UI: Tracking accepted
+
+    loop Every 500 ms
+        IPC->>Core: Propagate satellite state
+        Core-->>IPC: Az / El / Range / Range rate
+        IPC-->>UI: emit tracking_update
+        UI-->>Operator: Refresh operational view
+    end
+```
+
+The tracking loop copies the active target, releases shared state before propagation and skips
+missed ticks instead of accumulating delayed updates.
+
+## Documentation
+
+| Document | Covers |
+|---|---|
+| [Architecture](docs/01-architecture.md) | Layer boundaries and IPC contract |
+| [Database](docs/03-database.md) | Runtime paths, migrations and persistence policy |
+| [Conventions](docs/04-conventions.md) | Rust, TypeScript, encoding and repository standards |
+| [Calculations](docs/calculations.md) | Numeric formulas, constants, tolerances and sanity values |
+| [Decision records](docs/decisions/) | Significant architectural choices and their rationale |
+
+## Roadmap
+
+The numbered implementation phases are complete and SkyComet now evolves through focused product
+sprints. Current priorities are:
+
+- validate GS-232 control with a physical Yaesu G-5500-class rotator;
+- publish repeatable Windows release artifacts and installation guidance;
+- expand custom RF-profile and generic rotor-profile editing;
+- continue operational UI refinement from live pass workflows;
+- evaluate macOS and Linux only after the Windows release path is stable.
+
+Roadmap items are directional rather than release promises. Deferred technical decisions are
+re-evaluated only when their operational or hardware trigger becomes real.
+
+## Troubleshooting and support
+
+| Symptom | Check |
+|---|---|
+| No satellites or passes appear | Set a station location, connect once and run Catalog sync to refresh TLE data. |
+| RF plan cannot be computed | Choose an RF profile or enter a valid custom downlink frequency. |
+| Rotor controls remain unavailable | Configure a rotor profile, verify the serial port and reconnect the device. |
+| `cargo tauri` is not recognized | Install Tauri CLI v2 with `cargo install tauri-cli --version "^2"`. |
+| Frontend build rejects Node.js | Use the version pinned in `.nvmrc`—currently Node.js 22.12.0. |
+
+For reproducible bugs and feature requests, open a
+[GitHub issue](https://github.com/oguzkabaca/SkyComet/issues) with the affected screen, expected
+behavior, actual behavior and relevant logs. Do not include API keys, private station details or
+serial-device identifiers in public reports.
+
+## Acknowledgments and data sources
 
 - Orbital elements: [CelesTrak](https://celestrak.org/)
 - Satellite and transmitter metadata: [SatNOGS](https://satnogs.org/)
@@ -172,6 +278,10 @@ network request. Refreshed data remains subject to the availability and terms of
 Issues and focused pull requests are welcome. Keep changes aligned with the existing architecture,
 include tests for behavior changes and update `docs/calculations.md` in the same commit whenever a
 formula, constant or numeric tolerance changes.
+
+## Author
+
+Created and maintained by **Oğuz Kabaca**.
 
 ## License
 
