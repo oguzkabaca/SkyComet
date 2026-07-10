@@ -1,151 +1,180 @@
+<div align="center">
+
 # SkyComet
 
-A desktop ground-station application for amateur radio satellite operators.
-Built with **Rust + Tauri v2 + React** — a single `.exe` with no runtime dependencies.
+### Plan the pass. Validate the link. Track with confidence.
 
-SkyComet brings everything an operator needs to work a satellite pass into one
-application: orbit prediction, RF planning, space-weather risk, and antenna rotor
-control. It answers a single question — **"should I track this pass right now?"** —
-with one composite score.
+SkyComet is a desktop ground-station workspace for amateur radio satellite operators.
+It brings pass prediction, live tracking, RF analysis, space-weather context and rotor
+control into one focused application.
 
----
+[![CI](https://github.com/oguzkabaca/SkyComet/actions/workflows/ci.yml/badge.svg)](https://github.com/oguzkabaca/SkyComet/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f.svg)](LICENSE)
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4.svg)
+![Built with Rust and Tauri](https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri-24C8DB.svg)
 
-## Features
-
-- **Live tracking** — SGP4 propagation on a 500 ms tick; real-time azimuth, elevation, and range.
-- **Pass planner** — 24-hour pass predictions, polar sky-view, and a per-pass quality score.
-- **Catalog & map** — 2,700+ satellites with ground tracks on an equirectangular world map,
-  seeded from an embedded snapshot and refreshable from SatNOGS.
-- **RF planner** — Doppler curve, free-space path loss, polarization mismatch, and link-budget margin.
-- **Space weather** — NOAA/SWPC G-scale risk, surfaced directly in the operator's plan.
-- **Rotor control** — generic rotor profiles (Az-El / Az-only / El-only) driving a kinematic
-  simulator or a physical GS-232 rotator over serial, with feasibility, flip, and pre-position analysis.
-- **Operator brief** — folds pass geometry, RF margin, space weather, and rotor feasibility into a single readiness score.
-
-Design goals: **a single `.exe`, no Python/Node runtime, offline-capable** after the first sync.
+</div>
 
 ---
 
-## Status & testing
+## One workspace for the entire satellite pass
 
-The feature set is complete. Be aware of what has and has not been verified:
+Satellite operation usually means moving between prediction websites, Doppler notes,
+link-budget spreadsheets, space-weather pages and rotor software. SkyComet keeps that
+workflow in one place and answers the question that matters at the station:
 
-- **Automated tests:** 243 unit + 2 integration tests, all green, alongside
-  `clippy -D warnings`, `rustfmt`, ESLint, and a production build in the quality gate.
-- **Numeric verification:** every formula and constant is documented in
-  [docs/calculations.md](docs/calculations.md) with sanity values; implementations are
-  tested against those values (e.g. FSPL 437 MHz @ 800 km = 143.31 dB, ISS UHF Doppler ≈ ±9.9 kHz).
-- **Hardware:** the serial rotor backend (GS-232) is validated against a **mock transport
-  only**. It has **not yet been tested against a physical rotator** (first target:
-  Yaesu G-5500) — treat rotor control as experimental until on-air verification.
-- **Platforms:** developed and manually tested on **Windows** (WebView2).
-  macOS and Linux builds are untested.
+> **Is this pass worth tracking, and is the station ready for it?**
 
----
+| Plan | Evaluate | Track |
+|---|---|---|
+| See every useful pass on a shared timeline. | Check geometry, RF margin, weather risk and rotor feasibility. | Follow live azimuth, elevation, range, Doppler and rotor state. |
 
-## Getting started
+## Product highlights
 
-### Requirements
+- **Quick Track** — choose a visible, favorite or planned satellite and start software-only
+  or rotor-assisted tracking from one operational screen.
+- **All-sky Pass Planner** — inspect the next 24 hours as a satellite-by-satellite schedule,
+  filter by pass quality and queue the passes you want to work.
+- **Single-satellite analysis** — review pass windows, polar sky tracks, quality scores and
+  rotor feasibility in depth.
+- **RF Planner** — turn a catalog or custom frequency into a Doppler tuning curve, AOS/TCA/LOS
+  guidance and a complete downlink link-budget verdict.
+- **Live satellite state** — update azimuth, elevation, range, range rate, altitude and pass phase
+  on a 500 ms tracking loop.
+- **Catalog and map** — browse more than 2,700 satellites, inspect radio profiles and follow
+  ground tracks on an offline-capable world map.
+- **Space weather** — bring NOAA/SWPC geomagnetic risk into the same decision surface as the pass.
+- **Rotor operations** — configure generic Az-El, Az-only or El-only profiles; analyze slew,
+  flip and pre-position feasibility; control GS-232-compatible hardware over serial.
+- **Operator Brief** — combine pass geometry, RF margin, space weather and rotor feasibility
+  into one readiness score.
 
-- **Rust** 1.82+ (`rustup`)
-- **Node.js** 20+ and **npm** 10+
-- **Tauri CLI**: `cargo install tauri-cli --version "^2"`
-- **Windows:** Visual Studio 2022 Build Tools + Windows SDK + WebView2 Runtime (ships with Windows 10+)
+## Operator workflow
 
-### Install & run
+```mermaid
+flowchart LR
+    A["Choose a pass"] --> B["Check geometry"]
+    B --> C["Validate RF margin"]
+    C --> D["Review weather and rotor"]
+    D --> E{"Ready?"}
+    E -->|Yes| F["Track the satellite"]
+    E -->|No| G["Choose the next opportunity"]
+```
 
-```bash
-# Dependencies
-cd frontend && npm install && cd ..
+SkyComet remains useful offline after its embedded catalog has been installed. Network sync
+refreshes satellite metadata, TLE data and space weather when a connection is available.
 
-# Development (hot reload, dev DB at ./dev-data/skycomet.db)
+## What makes it different
+
+### Decision-first, not data-first
+
+SkyComet does not stop at drawing an orbit. It connects pass geometry to the rest of the station:
+the selected radio mode, expected Doppler, antenna and feed losses, space-weather conditions and
+the rotor's real movement limits.
+
+### Built for the operating desk
+
+The interface separates selection, ready, calculating and result states so the operator sees the
+next useful action instead of empty charts. Planned passes move directly into Quick Track, and RF
+profiles move directly into tuning guidance.
+
+### Local desktop application
+
+The production target is a single Windows executable. Python and Node.js are not required at
+runtime, there is no local web server or sidecar process, and operational data stays in a local
+SQLite database.
+
+## Project status
+
+SkyComet is currently a **development preview**. The software workflow is feature-complete and is
+actively refined through live Windows/WebView2 testing.
+
+- **Automated verification:** 269 unit tests and 2 integration tests, plus `rustfmt`,
+  `clippy -D warnings`, ESLint and a production frontend build.
+- **Numeric verification:** formulas, constants, tolerances and sanity values are documented in
+  [the calculation canon](docs/calculations.md) and covered by regression tests.
+- **Platform verification:** Windows is the active development and manual-test platform.
+  macOS and Linux builds have not been validated.
+- **Hardware verification:** the GS-232 serial backend is covered by mock-transport tests but has
+  not yet been validated with a physical rotator. Treat hardware control as experimental.
+
+## Build the development preview
+
+Published installers are not yet the primary distribution path. To run SkyComet from source on
+Windows, install:
+
+- [Rust](https://www.rust-lang.org/tools/install) **1.95.0**
+- [Node.js](https://nodejs.org/) **22.12.0** and npm
+- [Tauri CLI v2](https://v2.tauri.app/start/prerequisites/)
+- Visual Studio 2022 Build Tools, Windows SDK and WebView2 Runtime
+
+```powershell
+git clone https://github.com/oguzkabaca/SkyComet.git
+cd SkyComet
+
+npm install --prefix frontend
+cargo install tauri-cli --version "^2"
+
+# Development mode with hot reload
 cargo tauri dev
 
-# Production build (installer included)
+# Production executable and Windows installers
 cargo tauri build
 ```
 
-### Quality checks
+Development data is stored in `./dev-data/skycomet.db`. Production data is stored in the operating
+system's application-data directory; see [the database documentation](docs/03-database.md).
 
-```bash
-cargo fmt
+## Quality gate
+
+```powershell
+cd src-tauri
+cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cd frontend && npm run lint && npm run build
+
+cd ../frontend
+npm run lint
+npm run build
 ```
 
----
+## Architecture at a glance
 
-## Architecture
+SkyComet is built with **Rust, Tauri v2, React and TypeScript**.
 
-Two layers with a strict boundary:
-
-- **`src-tauri/src/core/`** — pure business logic (orbit, satellite, sync, analysis, rotor, …).
-  It never imports `tauri::*` and is tested in isolation.
-- **`src-tauri/src/commands/`** — the IPC boundary. The frontend talks to the backend only through
-  `invoke` and `emit`; there is no HTTP or WebSocket layer.
-- **`frontend/`** — React + TypeScript + Vite, with CSS Modules, three themes, and a custom title bar.
-
-```
-SkyComet/
-├── docs/
-│   ├── 01-architecture.md    ← layers, IPC contract
-│   ├── 03-database.md        ← DB location, migration policy
-│   ├── 04-conventions.md     ← code style, naming, encoding
-│   ├── 07-environments.md    ← toolchain and package management
-│   ├── calculations.md       ← every numeric formula, constant, and tolerance
-│   ├── decisions/            ← Architecture Decision Records
-│   └── design/               ← UI design canon (Shell v2 "Calm")
-├── src-tauri/                ← Rust + Tauri
-│   └── src/
-│       ├── commands/         ← Tauri command definitions (IPC boundary)
-│       └── core/             ← Tauri-independent business logic
-│           ├── db/  tle/  orbit/  satellite/  location/
-│           ├── sync/  analysis/  radio/  antenna/
-│           └── space_weather/  telemetry/  rotor/
-└── frontend/                 ← React + TS + Vite
-    └── src/
-        ├── screens/  viz/  components/  theme/  styles/
-        └── lib/ipc/          ← invoke + listen wrappers
+```text
+frontend/                 React interface and visualizations
+        │ invoke / emit
+src-tauri/src/commands/   Tauri IPC boundary
+        │
+src-tauri/src/core/       Tauri-independent orbit, RF, data and rotor logic
+        │
+SQLite + external sync    Local runtime state and refreshable public datasets
 ```
 
-See [docs/01-architecture.md](docs/01-architecture.md) for the full contract.
+The core does not depend on Tauri. The frontend communicates with the desktop backend only through
+typed `invoke` and `emit` messages—there is no REST or WebSocket layer. Read the
+[architecture](docs/01-architecture.md), [database policy](docs/03-database.md),
+[code conventions](docs/04-conventions.md) and [decision records](docs/decisions/) for details.
 
----
+## Data sources and attribution
 
-## Database location
+- Orbital elements: [CelesTrak](https://celestrak.org/)
+- Satellite and transmitter metadata: [SatNOGS](https://satnogs.org/)
+- Space weather: [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/)
+- World map vectors: [Natural Earth](https://www.naturalearthdata.com/) 110m data, public domain
 
-| Mode | Path |
-|---|---|
-| Development | `./dev-data/skycomet.db` (in-repo, gitignored) |
-| Production (Windows) | `%APPDATA%\com.skycomet.app\skycomet.db` |
-| Production (macOS) | `~/Library/Application Support/com.skycomet.app/skycomet.db` |
-| Production (Linux) | `~/.local/share/com.skycomet.app/skycomet.db` |
+SkyComet embeds a catalog snapshot so the first useful session does not depend on a successful
+network request. Refreshed data remains subject to the availability and terms of its source.
 
-See [docs/03-database.md](docs/03-database.md).
+## Contributing
 
----
-
-## Code standards
-
-- **Encoding:** UTF-8, no BOM, LF line endings (enforced by `.gitattributes`).
-- **Rust:** `cargo fmt` + `clippy -D warnings`; no `unwrap`/`expect`/`panic` in production code.
-- **TypeScript:** strict mode, no `any`.
-- **Abstraction:** a trait is introduced only once two real implementations exist.
-- **Numeric canon:** no magic numbers; every formula and constant lives in `docs/calculations.md`.
-
-See [docs/04-conventions.md](docs/04-conventions.md).
-
----
+Issues and focused pull requests are welcome. Keep changes aligned with the existing architecture,
+include tests for behavior changes and update `docs/calculations.md` in the same commit whenever a
+formula, constant or numeric tolerance changes.
 
 ## License
 
-[MIT](LICENSE) © 2026 Oğuz Kabaca
+SkyComet is released under the [MIT License](LICENSE).
 
-World map: [Natural Earth](https://www.naturalearthdata.com/) 110m land vectors (public domain).
-
----
-
-## Contact
-
-Oğuz Kabaca — kabacaoguzkbc@gmail.com
+Copyright © 2026 Oğuz Kabaca.
