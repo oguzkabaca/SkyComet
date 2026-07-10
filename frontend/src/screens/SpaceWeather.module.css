@@ -35,6 +35,10 @@
   gap: 8px;
 }
 
+.actionButton {
+  width: 88px;
+}
+
 .body {
   display: flex;
   flex-direction: column;

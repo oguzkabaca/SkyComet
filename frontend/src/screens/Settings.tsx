@@ -77,15 +77,10 @@ function errorMessage(err: unknown): string {
 }
 
 function FormStatus({ status }: { status: Status }) {
-  const text =
-    status.kind === 'loading'
-      ? 'Loading…'
-      : status.kind === 'saved'
-        ? 'Saved.'
-        : status.kind === 'error'
-          ? `Error: ${status.message}`
-          : '';
-  return <StatusLine tone={status.kind === 'error' ? 'error' : 'neutral'}>{text}</StatusLine>;
+  if (status.kind === 'idle') return null;
+  if (status.kind === 'saved') return <StatusLine>Saved.</StatusLine>;
+  if (status.kind === 'loading') return <StatusLine>Loading…</StatusLine>;
+  return <StatusLine tone="error">Error: {status.message}</StatusLine>;
 }
 
 export function Settings() {

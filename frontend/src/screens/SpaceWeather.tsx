@@ -117,10 +117,10 @@ export function SpaceWeather() {
       <header className={styles.head}>
         <h1 className={styles.title}>Space Weather</h1>
         <div className={styles.actions}>
-          <Button onClick={() => void load()} disabled={loading || syncing}>
+          <Button className={styles.actionButton} onClick={() => void load()} disabled={loading || syncing}>
             {loading ? 'Loading…' : 'Refresh'}
           </Button>
-          <Button variant="primary" onClick={() => void handleSync()} disabled={syncing}>
+          <Button className={styles.actionButton} variant="primary" onClick={() => void handleSync()} disabled={syncing}>
             {syncing ? 'Syncing…' : 'Sync now'}
           </Button>
         </div>

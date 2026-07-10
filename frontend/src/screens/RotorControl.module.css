@@ -48,6 +48,10 @@
   gap: 8px;
 }
 
+.btnRow > button {
+  min-width: 88px;
+}
+
 .statusRow {
   display: flex;
   flex-wrap: wrap;

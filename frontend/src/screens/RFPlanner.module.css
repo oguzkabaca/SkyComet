@@ -87,9 +87,9 @@
 }
 
 .recomputeButton {
-  min-width: 112px;
-  height: 46px;
-  padding-inline: 18px;
+  min-width: 0;
+  height: 36px;
+  padding-inline: 12px;
 }
 
 .targetButton:hover {

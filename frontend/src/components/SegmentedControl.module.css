@@ -1,5 +1,8 @@
 .seg {
   display: inline-flex;
+  box-sizing: border-box;
+  height: 36px;
+  align-items: center;
   background: var(--bg-inset);
   padding: 2px;
   border-radius: var(--r-pill);
@@ -7,6 +10,10 @@
 }
 
 .btn {
+  height: 28px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
   border: 0;
   background: transparent;
   font-family: var(--font-ui);
