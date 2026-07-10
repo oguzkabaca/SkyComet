@@ -1,9 +1,10 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field } from '../components/Field';
 import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
+import { SegmentedControl } from '../components/SegmentedControl';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
 import {
@@ -11,14 +12,20 @@ import {
   listPasses,
   listPassFeasibility,
   listSatellites,
+  listVisibleSatellites,
   type CommandError,
   type Feasibility,
   type Pass,
   type PassFeasibility,
   type PassSample,
   type SatelliteSummary,
+  type VisibleSatellite,
 } from '../lib/ipc/commands';
+import { usePassPlan } from '../lib/passPlan';
 import { PolarPlot } from '../viz/PolarPlot';
+import { useFavorites } from './quick-track/favorites';
+import { PassFilterDialog } from './satellite-passes/PassFilterDialog';
+import { SatellitePickerDialog } from './satellite-passes/SatellitePickerDialog';
 import styles from './SatellitePasses.module.css';
 
 const DEFAULT_HOURS = 24;
@@ -66,6 +73,10 @@ function formatDeg(value: number, digits = 1): string {
   return `${value.toFixed(digits)}°`;
 }
 
+function formatScore(value: number): string {
+  return Math.round(value * 100).toString();
+}
+
 function compassFromAz(az: number): string {
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   return dirs[Math.round(az / 45) % 8] ?? '—';
@@ -78,7 +89,10 @@ function compassFromAz(az: number): string {
  * Planning entry.
  */
 export function SatellitePasses() {
+  const { favorites, toggle: toggleFavorite } = useFavorites();
+  const { plan, remove: removePlanned } = usePassPlan();
   const [satellites, setSatellites] = useState<SatelliteSummary[]>([]);
+  const [visible, setVisible] = useState<VisibleSatellite[]>([]);
   const [selected, setSelected] = useState<number | ''>('');
   const [hoursAhead, setHoursAhead] = useState<number>(DEFAULT_HOURS);
   const [minElevation, setMinElevation] = useState<number>(0);
@@ -88,13 +102,23 @@ export function SatellitePasses() {
   const [track, setTrack] = useState<PassSample[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasComputed, setHasComputed] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [filterDialog, setFilterDialog] = useState<'horizon' | 'elevation' | null>(null);
+  const [polarView, setPolarView] = useState<'sky' | 'map'>('sky');
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const list = await listSatellites();
-        if (!cancelled) setSatellites(list);
+        const [list, visibleNow] = await Promise.all([
+          listSatellites(),
+          listVisibleSatellites().catch(() => []),
+        ]);
+        if (!cancelled) {
+          setSatellites(list);
+          setVisible(visibleNow);
+        }
       } catch (err: unknown) {
         if (!cancelled) setError(isCommandError(err) ? err.message : String(err));
       }
@@ -111,9 +135,12 @@ export function SatellitePasses() {
     setActivePassIdx(null);
     setTrack(null);
     setFeasByAos({});
+    setPasses([]);
+    setHasComputed(false);
     try {
       const result = await listPasses(selected, hoursAhead, minElevation);
       setPasses(result);
+      setHasComputed(true);
       // Rotor feasibility is best-effort: an empty list (no rotor profile) or a
       // failure must never block the pass list. Pass the exact rows so AOS
       // timestamps match (backend does not re-search).
@@ -128,6 +155,7 @@ export function SatellitePasses() {
     } catch (err: unknown) {
       setError(isCommandError(err) ? err.message : String(err));
       setPasses([]);
+      setHasComputed(true);
     } finally {
       setLoading(false);
     }
@@ -147,13 +175,24 @@ export function SatellitePasses() {
     }
   }
 
-  function handleSatChange(event: ChangeEvent<HTMLSelectElement>) {
-    const value = event.target.value;
-    setSelected(value === '' ? '' : Number(value));
+  function handleSatelliteSave(satellite: SatelliteSummary) {
+    setSelected(satellite.norad_id);
     setPasses([]);
     setFeasByAos({});
     setActivePassIdx(null);
     setTrack(null);
+    setHasComputed(false);
+    setError(null);
+    setPickerOpen(false);
+  }
+
+  function resetComputedState() {
+    setPasses([]);
+    setFeasByAos({});
+    setActivePassIdx(null);
+    setTrack(null);
+    setHasComputed(false);
+    setError(null);
   }
 
   const activePass = activePassIdx !== null ? passes[activePassIdx] : null;
@@ -161,21 +200,15 @@ export function SatellitePasses() {
 
   return (
     <ScreenFrame>
-      <ScreenPanel className={styles.panel} overflow="y-auto" container>
+      <ScreenPanel className={styles.panel} container>
+        <div className={styles.scrollArea}>
         <header className={styles.head}>
           <div className={styles.headText}>
             <span className={styles.eyebrow}>Pass planning</span>
-            <h1 className={styles.title}>
-              Satellite Passes
-              {selectedSat && (
-                <span className={styles.target}>
-                  {selectedSat.name} · {selectedSat.norad_id}
-                </span>
-              )}
-            </h1>
+            <h1 className={styles.title}>Satellite Passes</h1>
             <p className={styles.sub}>
-              Next <b>{hoursAhead}</b> h · minimum elevation <b>{minElevation}°</b>
-              {passes.length > 0 && (
+              Inspect one satellite's upcoming windows, geometry and rotor feasibility.
+              {hasComputed && passes.length > 0 && (
                 <>
                   {' · '}
                   <b>{passes.length}</b> passes
@@ -185,65 +218,147 @@ export function SatellitePasses() {
           </div>
 
           <div className={styles.toolbar}>
-          <Field label="Satellite" className={styles.grow}>
-            <select value={selected} onChange={handleSatChange}>
-              <option value="">— select —</option>
-              {satellites.map((s) => (
-                <option key={s.norad_id} value={s.norad_id}>
-                  {s.name} ({s.norad_id})
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Horizon (h)" className={styles.narrow}>
-            <input
-              type="number"
-              min={1}
-              max={168}
-              value={hoursAhead}
-              onChange={(e) => setHoursAhead(Number(e.target.value) || DEFAULT_HOURS)}
-            />
-          </Field>
-          <Field label="Min El (°)" className={styles.narrow}>
-            <input
-              type="number"
-              min={0}
-              max={89}
-              step={1}
-              value={minElevation}
-              onChange={(e) => setMinElevation(Number(e.target.value) || 0)}
-            />
-          </Field>
-            <Button
-              variant="primary"
-              onClick={handleSearch}
-              disabled={selected === '' || loading}
-            >
-              {loading ? 'Calculating…' : 'Find passes'}
-            </Button>
+            {selectedSat && (
+              <button
+                type="button"
+                className={styles.targetButton}
+                onClick={() => setPickerOpen(true)}
+                title="Change satellite"
+              >
+                <span className={styles.targetName}>{selectedSat.name}</span>
+                <span className={styles.targetMeta}>NORAD {selectedSat.norad_id}</span>
+                <span className={styles.targetChange}>Change</span>
+              </button>
+            )}
+            {selectedSat && hasComputed && (
+              <>
+                <Field label="Horizon (h)" className={styles.narrow}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={hoursAhead}
+                    onChange={(e) => {
+                      setHoursAhead(Number(e.target.value) || DEFAULT_HOURS);
+                      resetComputedState();
+                    }}
+                  />
+                </Field>
+                <Field label="Min El (°)" className={styles.narrow}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={89}
+                    step={1}
+                    value={minElevation}
+                    onChange={(e) => {
+                      setMinElevation(Number(e.target.value) || 0);
+                      resetComputedState();
+                    }}
+                  />
+                </Field>
+                <Button
+                  className={styles.findButton}
+                  variant="primary"
+                  onClick={handleSearch}
+                  disabled={loading}
+                >
+                  {loading ? 'Calculating…' : 'Find passes'}
+                </Button>
+              </>
+            )}
           </div>
         </header>
 
-        {(error || (passes.length === 0 && !loading && selected !== '')) && (
+        {error && (
           <div className={styles.alerts}>
-            {error && (
-              <StatusLine tone="error" role="alert">
-                {error}
-              </StatusLine>
-            )}
-            {!error && passes.length === 0 && !loading && selected !== '' && (
-              <StatusLine>No passes computed yet. Press "Find passes".</StatusLine>
-            )}
+            <StatusLine tone="error" role="alert">
+              {error}
+            </StatusLine>
           </div>
         )}
 
+        {selectedSat === undefined ? (
+          <div className={styles.emptyState}>
+            <div className={styles.orbitMark} aria-hidden="true">
+              <span />
+            </div>
+            <span className={styles.emptyEyebrow}>Single-satellite analysis</span>
+            <h2>Choose a satellite to inspect its passes</h2>
+            <p>
+              Search the catalog, use a favorite, or start with a satellite currently above the
+              horizon.
+            </p>
+            <Button variant="primary" onClick={() => setPickerOpen(true)}>
+              Set a Satellite
+            </Button>
+          </div>
+        ) : !hasComputed && !loading ? (
+          <div className={styles.readyState}>
+            <div className={styles.readyTarget}>
+              <span className={styles.readyEyebrow}>Ready to calculate</span>
+              <h2>{selectedSat.name}</h2>
+              <span>NORAD {selectedSat.norad_id}</span>
+            </div>
+            <div className={styles.readySummary}>
+              <button type="button" onClick={() => setFilterDialog('horizon')}>
+                <span>Search horizon</span>
+                <strong>{hoursAhead} hours</strong>
+                <small>Change</small>
+              </button>
+              <button type="button" onClick={() => setFilterDialog('elevation')}>
+                <span>Minimum elevation</span>
+                <strong>{minElevation}°</strong>
+                <small>Change</small>
+              </button>
+            </div>
+            <p>Run the calculation to reveal pass windows, sky tracks and rotor feasibility.</p>
+            <Button variant="primary" onClick={() => void handleSearch()}>
+              Find passes
+            </Button>
+          </div>
+        ) : loading ? (
+          <div className={styles.loadingState}>
+            <span className={styles.loadingPulse} />
+            <h2>Calculating upcoming passes</h2>
+            <p>
+              Searching the next {hoursAhead} hours for {selectedSat.name}.
+            </p>
+          </div>
+        ) : passes.length === 0 ? (
+          <div className={styles.readyState}>
+            <div className={styles.readyTarget}>
+              <span className={styles.readyEyebrow}>No matching windows</span>
+              <h2>{selectedSat.name}</h2>
+              <span>NORAD {selectedSat.norad_id}</span>
+            </div>
+            <p>
+              No pass reaches {minElevation}° in the next {hoursAhead} hours. Extend the horizon or
+              lower the elevation threshold.
+            </p>
+          </div>
+        ) : (
         <div className={styles.content}>
-          <Card title="Sky view" className={styles.skyCard}>
+          <Card
+            title="Sky view"
+            className={styles.skyCard}
+            action={
+              <SegmentedControl<'sky' | 'map'>
+                ariaLabel="Polar view convention"
+                options={[
+                  { value: 'sky', label: 'Sky' },
+                  { value: 'map', label: 'Map' },
+                ]}
+                value={polarView}
+                onChange={setPolarView}
+              />
+            }
+          >
             {activePass ? (
               <div className={styles.skyWrap}>
                 <div className={styles.polarBox}>
                   {track && track.length > 1 ? (
-                    <PolarPlot samples={track} />
+                    <PolarPlot samples={track} view={polarView} fill />
                   ) : (
                     <div className={styles.skyPlaceholder}>
                       <StatusLine>Loading track…</StatusLine>
@@ -292,10 +407,6 @@ export function SatellitePasses() {
                 </span>
               )}
             </div>
-            <div className={styles.chipbar}>
-              <span className={styles.chipOn}>{hoursAhead} h</span>
-              <span className={styles.chipOn}>El ≥ {minElevation}°</span>
-            </div>
             <div className={styles.rows}>
               {passes.map((p, i) => (
                 <div
@@ -332,13 +443,68 @@ export function SatellitePasses() {
                   </div>
                   <div className={styles.score}>
                     <span className={styles.sm}>Score</span>
-                    {p.score.toFixed(2)}
+                    {formatScore(p.score)}
                   </div>
                 </div>
               ))}
             </div>
           </section>
         </div>
+        )}
+
+        </div>
+
+        {pickerOpen && (
+          <SatellitePickerDialog
+            satellites={satellites}
+            visible={visible}
+            favorites={favorites}
+            plan={plan}
+            initialSat={selectedSat ?? null}
+            onToggleFavorite={toggleFavorite}
+            onRemovePlanned={removePlanned}
+            onCancel={() => setPickerOpen(false)}
+            onSave={handleSatelliteSave}
+          />
+        )}
+
+        {filterDialog === 'horizon' && (
+          <PassFilterDialog
+            title="Search horizon"
+            description="Choose how far ahead SkyComet should search for upcoming passes."
+            label="Horizon"
+            unit="hours"
+            value={hoursAhead}
+            min={1}
+            max={168}
+            options={[6, 12, 24, 48, 72, 168]}
+            onCancel={() => setFilterDialog(null)}
+            onSave={(value) => {
+              setHoursAhead(value);
+              resetComputedState();
+              setFilterDialog(null);
+            }}
+          />
+        )}
+
+        {filterDialog === 'elevation' && (
+          <PassFilterDialog
+            title="Minimum elevation"
+            description="Hide low passes by setting the minimum peak elevation for the search."
+            label="Elevation"
+            unit="degrees"
+            value={minElevation}
+            min={0}
+            max={89}
+            options={[0, 5, 10, 20, 30, 45]}
+            onCancel={() => setFilterDialog(null)}
+            onSave={(value) => {
+              setMinElevation(value);
+              resetComputedState();
+              setFilterDialog(null);
+            }}
+          />
+        )}
       </ScreenPanel>
     </ScreenFrame>
   );

@@ -178,7 +178,7 @@ export function PassDetailPanel({ sel, onClose }: Props) {
           </div>
           <div className={styles.stat}>
             <dt className={styles.statLbl}>Score</dt>
-            <dd className={styles.statVal}>{p.score.toFixed(2)}</dd>
+            <dd className={styles.statVal}>{Math.round(p.score * 100)}</dd>
           </div>
         </dl>
 
