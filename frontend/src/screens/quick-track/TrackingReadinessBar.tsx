@@ -1,3 +1,4 @@
+import { ROTOR_ENABLED } from '../../lib/features';
 import styles from './TrackingReadinessBar.module.css';
 
 type Tone = 'ok' | 'warn' | 'muted';
@@ -23,10 +24,12 @@ export function TrackingReadinessBar({ stationReady, rotorConnected }: Props) {
         label={stationReady ? 'Station ready' : 'Station not set'}
         tone={stationReady ? 'ok' : 'warn'}
       />
-      <Chip
-        label={rotorConnected ? 'Rotor connected' : 'Rotor disconnected'}
-        tone={rotorConnected ? 'ok' : 'muted'}
-      />
+      {ROTOR_ENABLED && (
+        <Chip
+          label={rotorConnected ? 'Rotor connected' : 'Rotor disconnected'}
+          tone={rotorConnected ? 'ok' : 'muted'}
+        />
+      )}
       <Chip label="Radio not configured" tone="muted" />
     </div>
   );

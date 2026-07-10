@@ -1,3 +1,4 @@
+import { ROTOR_ENABLED } from '../../lib/features';
 import styles from './SystemHealthBar.module.css';
 
 /** Display threshold above which a TLE is flagged stale in the health bar. */
@@ -36,11 +37,15 @@ export function SystemHealthBar({ tleAgeHours, tracking, rotorConnected, station
         label={tracking ? `Position ${POSITION_HZ} Hz` : 'Position idle'}
         tone={tracking ? 'ok' : 'muted'}
       />
-      <span className={styles.sep}>·</span>
-      <Item
-        label={rotorConnected ? 'Rotor connected' : 'Rotor disconnected'}
-        tone={rotorConnected ? 'ok' : 'muted'}
-      />
+      {ROTOR_ENABLED && (
+        <>
+          <span className={styles.sep}>·</span>
+          <Item
+            label={rotorConnected ? 'Rotor connected' : 'Rotor disconnected'}
+            tone={rotorConnected ? 'ok' : 'muted'}
+          />
+        </>
+      )}
       <span className={styles.sep}>·</span>
       <Item label="Radio offline" tone="muted" />
       <span className={styles.sep}>·</span>

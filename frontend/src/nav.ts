@@ -1,3 +1,5 @@
+import { ROTOR_ENABLED } from './lib/features';
+
 export type ScreenId =
   | 'quick-track'
   | 'pass-planner'
@@ -52,7 +54,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Operations',
     items: [
-      { label: 'Rotor control', icon: 'rotor', screen: 'rotor-control' },
+      // Physical rotor control is gated out of the alpha channel (ADR 0014 D2).
+      ...(ROTOR_ENABLED
+        ? [{ label: 'Rotor control', icon: 'rotor', screen: 'rotor-control' } as NavItem]
+        : []),
       { label: 'Operator brief', icon: 'brief', screen: 'operator-brief' },
     ],
   },

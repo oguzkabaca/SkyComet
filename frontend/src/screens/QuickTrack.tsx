@@ -25,6 +25,7 @@ import {
   type SatelliteSummary,
   type VisibleSatellite,
 } from '../lib/ipc/commands';
+import { ROTOR_ENABLED } from '../lib/features';
 import { type TrackingSnapshot } from '../lib/ipc/events';
 import {
   passKey,
@@ -252,7 +253,7 @@ export function QuickTrack({ onNavigate, operationIntent, onConsumeOperation }: 
           listSatellites(),
           getLastActiveNorad(),
           getLocation().catch(() => null),
-          rotorStatus().catch(() => null),
+          ROTOR_ENABLED ? rotorStatus().catch(() => null) : Promise.resolve(null),
         ]);
         if (cancelled) return;
         setSatellites(list);
@@ -332,7 +333,9 @@ export function QuickTrack({ onNavigate, operationIntent, onConsumeOperation }: 
 
   // Poll the rotor: refresh the live device position (also feeds the watchdog)
   // and connection/pause state. Cheap when disconnected — the read just rejects.
+  // Skipped entirely while rotor control is gated out (ADR 0014 D2).
   const refreshRotor = useCallback(async () => {
+    if (!ROTOR_ENABLED) return;
     try {
       await rotorReadPosition();
     } catch {
@@ -346,6 +349,7 @@ export function QuickTrack({ onNavigate, operationIntent, onConsumeOperation }: 
   }, []);
 
   useEffect(() => {
+    if (!ROTOR_ENABLED) return;
     const id = setInterval(() => void refreshRotor(), 1500);
     return () => clearInterval(id);
   }, [refreshRotor]);
@@ -694,14 +698,16 @@ export function QuickTrack({ onNavigate, operationIntent, onConsumeOperation }: 
               onSelect={handleRfQuickSelect}
               snapshot={tracking ? liveSnapshot : null}
             />
-            <RotorStatusCard
-              status={rotor}
-              target={rotorTarget}
-              onPause={() => handleRotorAction(rotorPause)}
-              onResume={() => handleRotorAction(rotorResume)}
-              onPark={() => handleRotorAction(rotorPark)}
-              onStop={() => handleRotorAction(rotorStop)}
-            />
+            {ROTOR_ENABLED && (
+              <RotorStatusCard
+                status={rotor}
+                target={rotorTarget}
+                onPause={() => handleRotorAction(rotorPause)}
+                onResume={() => handleRotorAction(rotorResume)}
+                onPark={() => handleRotorAction(rotorPark)}
+                onStop={() => handleRotorAction(rotorStop)}
+              />
+            )}
           </aside>
         </div>
 

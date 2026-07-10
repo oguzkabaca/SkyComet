@@ -22,6 +22,24 @@ use crate::core::rotor::backend::RotorBackend;
 use crate::core::rotor::protocol::RotorPosition;
 use crate::core::rotor::serial::{self, SerialRotor};
 
+/// Alpha release-channel gate (ADR 0014 D2): while `false`, every
+/// hardware-facing command refuses before any port I/O, so the WebView cannot
+/// reach the serial port at all. Pure state commands (pause / resume / status /
+/// disconnect) stay live because software tracking uses them. Flip to `true`
+/// once the physical G-5500 verification (and the serial-path audit hardening)
+/// lands. The frontend mirrors this gate in `frontend/src/lib/features.ts`.
+pub const SERIAL_ROTOR_ENABLED: bool = false;
+
+fn ensure_serial_rotor_enabled() -> Result<(), CommandError> {
+    if SERIAL_ROTOR_ENABLED {
+        return Ok(());
+    }
+    Err(CommandError {
+        code: "rotor_disabled".into(),
+        message: "physical rotor control is disabled in this release channel (ADR 0014)".into(),
+    })
+}
+
 /// The concrete production rotor: the F8 codec over a real serial port.
 type SerialRotorPort = SerialRotor<Box<dyn SerialPort>>;
 
@@ -106,6 +124,7 @@ pub struct RotorStatusDto {
 /// Enumerate host serial ports for the connect dropdown.
 #[tauri::command]
 pub fn list_serial_ports() -> Result<Vec<SerialPortDto>, CommandError> {
+    ensure_serial_rotor_enabled()?;
     let ports = serial::available_ports().map_err(|e| map_err("serial_enumerate_failed", e))?;
     Ok(ports
         .into_iter()
@@ -126,6 +145,7 @@ pub fn connect_rotor(
     auto: State<'_, AutoTrack>,
     port: String,
 ) -> Result<RotorStatusDto, CommandError> {
+    ensure_serial_rotor_enabled()?;
     let profile = op_profile::load_or_seed(db.inner()).map_err(|e| map_err("profile_error", e))?;
     let rotor_profile = profile.rotor.clone().ok_or_else(|| CommandError {
         code: "no_rotor_profile".into(),
@@ -159,6 +179,7 @@ pub fn rotor_goto(
     az_deg: f64,
     el_deg: f64,
 ) -> Result<(), CommandError> {
+    ensure_serial_rotor_enabled()?;
     with_connected(&conn, |rotor| {
         rotor
             .goto(RotorPosition { az_deg, el_deg })
@@ -171,6 +192,7 @@ pub fn rotor_goto(
 pub fn rotor_read_position(
     conn: State<'_, RotorConnection>,
 ) -> Result<RotorPositionDto, CommandError> {
+    ensure_serial_rotor_enabled()?;
     with_connected(&conn, |rotor| {
         rotor
             .read_position()
@@ -212,6 +234,7 @@ pub fn rotor_park(
     conn: State<'_, RotorConnection>,
     auto: State<'_, AutoTrack>,
 ) -> Result<(), CommandError> {
+    ensure_serial_rotor_enabled()?;
     auto.paused.store(true, Ordering::Relaxed);
     with_connected(&conn, |rotor| {
         let profile = rotor.profile();
@@ -249,5 +272,22 @@ fn status_of(rotor: Option<&SerialRotorPort>, auto_track_paused: bool) -> RotorS
             last_position: r.last_position().map(RotorPositionDto::from),
             auto_track_paused,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ADR 0014 D2 lock: the gate must track the channel flag exactly — while
+    /// the flag is off, hardware-facing commands refuse with `rotor_disabled`
+    /// before any serial I/O, so no connection can ever be established.
+    #[test]
+    fn serial_rotor_gate_matches_release_channel_flag() {
+        let gate = ensure_serial_rotor_enabled();
+        assert_eq!(gate.is_ok(), SERIAL_ROTOR_ENABLED);
+        if let Err(err) = gate {
+            assert_eq!(err.code, "rotor_disabled");
+        }
     }
 }

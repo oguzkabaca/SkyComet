@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { AppShell } from './components/AppShell';
+import { ROTOR_ENABLED } from './lib/features';
 import {
   isOperationIntentV1,
   type OperationIntentV1,
@@ -61,7 +62,7 @@ function App() {
           />
         )}
         {screen === 'space-weather' && <SpaceWeather />}
-        {screen === 'rotor-control' && <RotorControl />}
+        {screen === 'rotor-control' && ROTOR_ENABLED && <RotorControl />}
         {screen === 'operator-brief' && <OperatorBrief />}
         {screen === 'settings' && <Settings />}
       </AppShell>

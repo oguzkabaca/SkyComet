@@ -1,4 +1,5 @@
 import { Button } from '../../components/Button';
+import { ROTOR_ENABLED } from '../../lib/features';
 import type { SatelliteSummary } from '../../lib/ipc/commands';
 import { TrackScoreBadge } from './TrackScoreBadge';
 import { TrackingActionButton } from './TrackingActionButton';
@@ -50,10 +51,16 @@ export function QuickTrackHeader(props: Props) {
 
   let sub: string;
   if (tracking && selectedSat) {
-    const mode = trackingMode === 'rotor' ? 'Rotor tracking' : 'Software tracking';
+    const mode = !ROTOR_ENABLED
+      ? 'Tracking'
+      : trackingMode === 'rotor'
+        ? 'Rotor tracking'
+        : 'Software tracking';
     sub = `${mode} · ${rfLabel ? `${rfLabel} · ` : ''}NORAD ${selectedSat.norad_id}`;
   } else if (selectedSat) {
-    sub = 'Target saved. Start software tracking to compute everything, or drive the rotor.';
+    sub = ROTOR_ENABLED
+      ? 'Target saved. Start software tracking to compute everything, or drive the rotor.'
+      : 'Target saved. Start tracking to compute look angles, RF and the pass timeline.';
   } else {
     sub = 'Set a satellite to begin — pick from favorites or what is overhead right now.';
   }

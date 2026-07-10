@@ -34,8 +34,13 @@ Deactivation, not deletion:
   `ROTOR_ENABLED = false`) hides the Rotor Control screen, the rotor tracking start mode,
   the rotor status card, rotor markers in the sky view, and the park step of the stop
   dialog.
-- **Backend:** the seven `serial_rotor` IPC commands are not registered in the invoke
-  handler while the flag is off, so the WebView cannot reach the serial port at all.
+- **Backend:** a matching gate (`SERIAL_ROTOR_ENABLED` in `commands/serial_rotor.rs`)
+  makes every hardware-facing command (`list_serial_ports`, `connect_rotor`,
+  `rotor_goto`, `rotor_read_position`, `rotor_park`) refuse with `rotor_disabled`
+  before any port I/O, so the WebView cannot reach the serial port at all. Pure
+  state commands (pause / resume / status / disconnect / stop) stay live because
+  software tracking uses the auto-track pause flag; without a connection they never
+  touch hardware.
 - **Kept:** the entire `core/rotor` module and its tests, the rotor *analysis* surfaces
   (Operator Brief, pass feasibility, rotor profile in Settings) — these are pure
   computation over rotor profiles and involve no hardware I/O.

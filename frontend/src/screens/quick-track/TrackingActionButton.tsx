@@ -1,4 +1,5 @@
 import { Button } from '../../components/Button';
+import { ROTOR_ENABLED } from '../../lib/features';
 
 interface Props {
   hasSatellite: boolean;
@@ -28,6 +29,14 @@ export function TrackingActionButton({
     return (
       <Button variant="primary" onClick={onConfigureStation}>
         Configure Station
+      </Button>
+    );
+  }
+  // Alpha channel (ADR 0014 D2): no rotor path — a single start action.
+  if (!ROTOR_ENABLED) {
+    return (
+      <Button variant="primary" onClick={onStartSoftware}>
+        Start Tracking
       </Button>
     );
   }
