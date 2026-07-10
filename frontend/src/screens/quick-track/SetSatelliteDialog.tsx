@@ -18,6 +18,9 @@ type SourceTab = 'visible' | 'favorites' | 'plan' | 'all';
 const ALL_TAB_ROW_CAP = 150;
 
 interface Props {
+  /** Optional copy override for consumers that configure more than tracking. */
+  title?: string;
+  saveLabel?: string;
   satellites: SatelliteSummary[];
   /** Satellites currently above the horizon (highest first). */
   visible: VisibleSatellite[];
@@ -52,6 +55,8 @@ function matches(name: string, noradId: number, query: string): boolean {
  * simply discards it.
  */
 export function SetSatelliteDialog({
+  title = 'Set a satellite',
+  saveLabel = 'Save',
   satellites,
   visible,
   favorites,
@@ -247,7 +252,7 @@ export function SetSatelliteDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="set-sat-title" className={styles.title}>
-          Set a satellite
+          {title}
         </h2>
 
         <div className={styles.tabs} role="tablist" aria-label="Satellite source">
@@ -355,7 +360,7 @@ export function SetSatelliteDialog({
             disabled={draftSat === null || rfLoading}
             onClick={() => draftSat && onSave(draftSat, draftRf, frequencies)}
           >
-            Save
+            {saveLabel}
           </Button>
         </div>
       </div>

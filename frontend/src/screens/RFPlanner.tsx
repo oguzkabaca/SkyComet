@@ -1,30 +1,36 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import {
-  getDopplerCurve,
-  getLinkBudget,
-  getSatelliteDetail,
-  listPasses,
-  listSatellites,
-  type CommandError,
-  type DopplerCurve,
-  type FrequencyRecord,
-  type LinkBudget,
-  type Pass,
-  type SatelliteSummary,
-} from '../lib/ipc/commands';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field } from '../components/Field';
 import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatusLine } from '../components/StatusLine';
+import { Tag } from '../components/Tag';
+import {
+  getDopplerCurve,
+  getLinkBudget,
+  listPasses,
+  listSatellites,
+  listVisibleSatellites,
+  type CommandError,
+  type DopplerCurve,
+  type DopplerSample,
+  type FrequencyRecord,
+  type LinkBudget,
+  type Pass,
+  type SatelliteSummary,
+  type VisibleSatellite,
+} from '../lib/ipc/commands';
+import { usePassPlan } from '../lib/passPlan';
 import { DopplerChart } from '../viz/DopplerChart';
 import { LinkBudgetTable } from '../viz/LinkBudgetTable';
+import { useFavorites } from './quick-track/favorites';
+import { fmtBand, profileName, type RFSelection } from './quick-track/rf';
+import { SetSatelliteDialog } from './quick-track/SetSatelliteDialog';
 import styles from './RFPlanner.module.css';
 
 const MODES = ['FM', 'SSB', 'CW', 'AFSK1K2', 'FSK', 'GMSK', 'Other'] as const;
-const CUSTOM_FREQ = '__custom__';
 const DOPPLER_SAMPLES = 121;
 
 function isCommandError(value: unknown): value is CommandError {
@@ -35,62 +41,89 @@ function errMsg(err: unknown): string {
   return isCommandError(err) ? err.message : String(err);
 }
 
-function pickFrequencies(freqs: FrequencyRecord[]): FrequencyRecord[] {
-  // Only entries with a downlink_low_hz; deduplicate by (freq, mode).
-  const seen = new Set<string>();
-  const out: FrequencyRecord[] = [];
-  for (const f of freqs) {
-    if (f.downlinkLowHz == null || !Number.isFinite(f.downlinkLowHz)) continue;
-    const key = `${f.downlinkLowHz}-${f.mode ?? ''}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(f);
-  }
-  return out;
-}
-
-function formatFreqMHz(hz: number): string {
-  return `${(hz / 1.0e6).toFixed(4)} MHz`;
-}
-
 function inferMode(raw: string | null | undefined): string {
   if (!raw) return 'FM';
-  const up = raw.toUpperCase();
-  for (const m of MODES) {
-    if (up.includes(m)) return m;
+  const upper = raw.toUpperCase();
+  return MODES.find((item) => upper.includes(item)) ?? 'Other';
+}
+
+function formatFreq(hz: number, digits = 4): string {
+  return `${(hz / 1e6).toFixed(digits)} MHz`;
+}
+
+function formatShift(hz: number): string {
+  const sign = hz >= 0 ? '+' : '−';
+  return `${sign}${(Math.abs(hz) / 1000).toFixed(2)} kHz`;
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDuration(seconds: number): string {
+  const roundedSeconds = Math.round(seconds);
+  const minutes = Math.floor(roundedSeconds / 60);
+  const rest = roundedSeconds % 60;
+  return `${minutes}m ${rest.toString().padStart(2, '0')}s`;
+}
+
+function closestToTca(samples: DopplerSample[]): DopplerSample | null {
+  if (samples.length === 0) return null;
+  return samples.reduce((best, sample) =>
+    sample.elevationDeg > best.elevationDeg ? sample : best,
+  );
+}
+
+function marginTone(marginDb: number): 'ok' | 'warn' | 'danger' {
+  if (marginDb < 0) return 'danger';
+  if (marginDb < 6) return 'warn';
+  return 'ok';
+}
+
+function marginSummary(marginDb: number): string {
+  if (marginDb < 0) {
+    return `The predicted signal is ${Math.abs(marginDb).toFixed(1)} dB below the required decoding threshold.`;
   }
-  return 'Other';
+  if (marginDb < 6) {
+    return `The link is decodable with ${marginDb.toFixed(1)} dB of limited operating headroom.`;
+  }
+  return `The link has ${marginDb.toFixed(1)} dB of comfortable headroom above the decoding threshold.`;
 }
 
 export function RFPlanner() {
+  const { favorites, toggle: toggleFavorite } = useFavorites();
+  const { plan, remove: removePlanned } = usePassPlan();
   const [satellites, setSatellites] = useState<SatelliteSummary[]>([]);
-  const [selected, setSelected] = useState<number | ''>('');
+  const [visible, setVisible] = useState<VisibleSatellite[]>([]);
+  const [selectedSat, setSelectedSat] = useState<SatelliteSummary | null>(null);
   const [frequencies, setFrequencies] = useState<FrequencyRecord[]>([]);
-  const [freqChoice, setFreqChoice] = useState<string>('');
-  const [customFreqMHz, setCustomFreqMHz] = useState<string>('');
+  const [rfSelection, setRfSelection] = useState<RFSelection>({ kind: 'none' });
+  const [customFreqMHz, setCustomFreqMHz] = useState('');
   const [mode, setMode] = useState<string>('FM');
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const [budget, setBudget] = useState<LinkBudget | null>(null);
   const [doppler, setDoppler] = useState<DopplerCurve | null>(null);
+  const [activePass, setActivePass] = useState<Pass | null>(null);
   const [dopplerNote, setDopplerNote] = useState<string | null>(null);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasComputed, setHasComputed] = useState(false);
 
-  // Keep latest "compute inputs" so profile_changed can re-trigger.
-  const lastInputsRef = useRef<{
-    norad: number;
-    freqTxHz: number;
-    mode: string;
-  } | null>(null);
+  const lastInputsRef = useRef<{ norad: number; freqTxHz: number; mode: string } | null>(null);
 
-  // Load satellite list once.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const list = await listSatellites();
-        if (!cancelled) setSatellites(list);
+        const [list, visibleNow] = await Promise.all([
+          listSatellites(),
+          listVisibleSatellites().catch(() => []),
+        ]);
+        if (!cancelled) {
+          setSatellites(list);
+          setVisible(visibleNow);
+        }
       } catch (err: unknown) {
         if (!cancelled) setError(errMsg(err));
       }
@@ -100,42 +133,23 @@ export function RFPlanner() {
     };
   }, []);
 
-  // When satellite changes, load its detail (frequency rows).
-  useEffect(() => {
-    if (selected === '') return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const detail = await getSatelliteDetail(selected);
-        if (cancelled) return;
-        const picked = pickFrequencies(detail?.frequencies ?? []);
-        setFrequencies(picked);
-        if (picked.length > 0) {
-          setFreqChoice('0');
-          setMode(inferMode(picked[0]!.mode));
-        } else {
-          setFreqChoice(CUSTOM_FREQ);
-        }
-      } catch (err: unknown) {
-        if (!cancelled) setError(errMsg(err));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selected]);
+  const selectedProfile =
+    rfSelection.kind === 'profile' ? frequencies[rfSelection.index] ?? null : null;
+  const configuredFreqHz = useMemo(() => {
+    if (selectedProfile?.downlinkLowHz != null) return selectedProfile.downlinkLowHz;
+    const mhz = Number(customFreqMHz);
+    return Number.isFinite(mhz) && mhz > 0 ? mhz * 1e6 : null;
+  }, [customFreqMHz, selectedProfile]);
 
-  function resolveFreqHz(): number | null {
-    if (freqChoice === CUSTOM_FREQ) {
-      const mhz = Number(customFreqMHz);
-      if (!Number.isFinite(mhz) || mhz <= 0) return null;
-      return mhz * 1.0e6;
-    }
-    const idx = Number(freqChoice);
-    const rec = frequencies[idx];
-    if (!rec || rec.downlinkLowHz == null) return null;
-    return rec.downlinkLowHz;
-  }
+  const resetResults = useCallback(() => {
+    setBudget(null);
+    setDoppler(null);
+    setActivePass(null);
+    setDopplerNote(null);
+    setHasComputed(false);
+    setError(null);
+    lastInputsRef.current = null;
+  }, []);
 
   const computeDopplerForPass = useCallback(
     async (norad: number, freqTxHz: number, pass: Pass) => {
@@ -148,10 +162,11 @@ export function RFPlanner() {
           DOPPLER_SAMPLES,
         );
         setDoppler(curve);
-        const aosLocal = new Date(pass.aos).toLocaleString();
-        setDopplerNote(`Pass AOS ${aosLocal} · max el ${pass.maxElevationDeg.toFixed(1)}°`);
+        setActivePass(pass);
+        setDopplerNote(null);
       } catch (err: unknown) {
         setDoppler(null);
+        setActivePass(pass);
         setDopplerNote(`Doppler unavailable: ${errMsg(err)}`);
       }
     },
@@ -159,28 +174,35 @@ export function RFPlanner() {
   );
 
   const runCompute = useCallback(
-    async (norad: number, freqTxHz: number, modeStr: string) => {
+    async (norad: number, freqTxHz: number, modeString: string) => {
       setLoading(true);
       setError(null);
       setDopplerNote(null);
+      setHasComputed(false);
       try {
-        const lb = await getLinkBudget(norad, freqTxHz, modeStr);
-        setBudget(lb);
+        const [linkBudget, passes] = await Promise.all([
+          getLinkBudget(norad, freqTxHz, modeString),
+          listPasses(norad, 24, 0),
+        ]);
+        setBudget(linkBudget);
 
-        const passes = await listPasses(norad, 24, 0);
-        const next = passes.find((p) => new Date(p.aos).getTime() > Date.now()) ?? passes[0];
+        const next = passes.find((pass) => new Date(pass.los).getTime() > Date.now()) ?? passes[0];
         if (!next) {
           setDoppler(null);
-          setDopplerNote('No upcoming pass in the next 24 h.');
+          setActivePass(null);
+          setDopplerNote('No upcoming pass in the next 24 hours.');
         } else {
           await computeDopplerForPass(norad, freqTxHz, next);
         }
 
-        lastInputsRef.current = { norad, freqTxHz, mode: modeStr };
+        lastInputsRef.current = { norad, freqTxHz, mode: modeString };
+        setHasComputed(true);
       } catch (err: unknown) {
         setError(errMsg(err));
         setBudget(null);
         setDoppler(null);
+        setActivePass(null);
+        setHasComputed(true);
       } finally {
         setLoading(false);
       }
@@ -189,16 +211,39 @@ export function RFPlanner() {
   );
 
   function handleCompute() {
-    if (selected === '') return;
-    const freqHz = resolveFreqHz();
-    if (freqHz == null) {
-      setError('Invalid frequency.');
+    if (!selectedSat) return;
+    if (configuredFreqHz == null) {
+      setError('Enter a valid downlink frequency.');
       return;
     }
-    void runCompute(selected, freqHz, mode);
+    void runCompute(selectedSat.norad_id, configuredFreqHz, mode);
   }
 
-  // profile_changed event: re-run link budget (and doppler) with latest inputs.
+  function handleSetupSave(
+    satellite: SatelliteSummary,
+    selection: RFSelection,
+    availableFrequencies: FrequencyRecord[],
+  ) {
+    setSelectedSat(satellite);
+    setFrequencies(availableFrequencies);
+    setRfSelection(selection);
+    if (selection.kind === 'profile') {
+      const profile = availableFrequencies[selection.index];
+      setMode(inferMode(profile?.mode));
+      setCustomFreqMHz('');
+    }
+    setPickerOpen(false);
+    resetResults();
+  }
+
+  function handleSetupReset() {
+    setSelectedSat(null);
+    setFrequencies([]);
+    setRfSelection({ kind: 'none' });
+    setCustomFreqMHz('');
+    resetResults();
+  }
+
   useEffect(() => {
     let cancelled = false;
     let unlisten: UnlistenFn | undefined;
@@ -215,115 +260,396 @@ export function RFPlanner() {
     };
   }, [runCompute]);
 
-  function handleSatChange(event: ChangeEvent<HTMLSelectElement>) {
-    const v = event.target.value;
-    setSelected(v === '' ? '' : Number(v));
-    setBudget(null);
-    setDoppler(null);
-    setDopplerNote(null);
-    lastInputsRef.current = null;
-  }
-
-  function handleFreqChange(event: ChangeEvent<HTMLSelectElement>) {
-    setFreqChoice(event.target.value);
-  }
+  const firstSample = doppler?.samples[0] ?? null;
+  const tcaSample = doppler ? closestToTca(doppler.samples) : null;
+  const lastSample = doppler?.samples[doppler.samples.length - 1] ?? null;
+  const profileLabel = selectedProfile ? profileName(selectedProfile) : 'Custom frequency';
+  const profileBand = selectedProfile
+    ? (fmtBand(selectedProfile.downlinkLowHz, selectedProfile.downlinkHighHz) ?? 'Frequency unavailable')
+    : configuredFreqHz != null
+      ? formatFreq(configuredFreqHz)
+      : 'Frequency required';
 
   return (
     <ScreenFrame>
       <ScreenPanel className={styles.panel} container>
-      <div className={styles.head}>
-        <h1 className={styles.title}>RF Planner</h1>
-        <span className={styles.sub}>Doppler curve and downlink link budget</span>
-      </div>
+        <div className={styles.scrollArea}>
+          <header className={styles.head}>
+            <div className={styles.headText}>
+              <span className={styles.eyebrow}>RF analysis</span>
+              <h1 className={styles.title}>RF Planner</h1>
+              <p className={styles.sub}>
+                Plan receiver tuning through the pass and inspect the complete downlink budget.
+              </p>
+            </div>
 
-      <div className={styles.body}>
-        <Card className={styles.controls}>
-          <Field label="Satellite">
-            <select value={selected} onChange={handleSatChange}>
-              <option value="">— select —</option>
-              {satellites.map((s) => (
-                <option key={s.norad_id} value={s.norad_id}>
-                  {s.name} ({s.norad_id})
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Downlink frequency">
-            <select value={freqChoice} onChange={handleFreqChange} disabled={selected === ''}>
-              {frequencies.map((f, i) => (
-                <option key={`${f.downlinkLowHz}-${i}`} value={String(i)}>
-                  {formatFreqMHz(f.downlinkLowHz!)} {f.mode ? `(${f.mode})` : ''}
-                </option>
-              ))}
-              <option value={CUSTOM_FREQ}>Custom…</option>
-            </select>
-          </Field>
-
-          {freqChoice === CUSTOM_FREQ && (
-            <Field label="Custom (MHz)">
-              <input
-                type="number"
-                step="0.0001"
-                min="0"
-                value={customFreqMHz}
-                onChange={(e) => setCustomFreqMHz(e.target.value)}
-                placeholder="e.g. 145.825"
-              />
-            </Field>
-          )}
-
-          <Field label="Mode">
-            <select value={mode} onChange={(e) => setMode(e.target.value)}>
-              {MODES.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Button
-            variant="primary"
-            onClick={handleCompute}
-            disabled={selected === '' || loading}
-          >
-            {loading ? 'Computing…' : 'Compute'}
-          </Button>
+            {selectedSat && (
+              <div className={styles.toolbar}>
+                <button
+                  type="button"
+                  className={styles.targetButton}
+                  onClick={() => setPickerOpen(true)}
+                  title="Change satellite and RF profile"
+                >
+                  <span className={styles.targetName}>{selectedSat.name}</span>
+                  <span className={styles.targetMeta}>{profileBand}</span>
+                  <span className={styles.targetChange}>Change</span>
+                </button>
+                {hasComputed && (
+                  <Button
+                    className={styles.recomputeButton}
+                    variant="primary"
+                    onClick={handleCompute}
+                    disabled={loading}
+                  >
+                    {loading ? 'Recomputing…' : 'Recompute'}
+                  </Button>
+                )}
+              </div>
+            )}
+          </header>
 
           {error && (
-            <StatusLine tone="error" role="alert">
-              {error}
-            </StatusLine>
-          )}
-        </Card>
-
-        <div className={styles.results}>
-          <Card title="Doppler curve">
-            {doppler ? (
-              <DopplerChart
-                samples={doppler.samples}
-                peakPositiveHz={doppler.peakPositiveHz}
-                peakNegativeHz={doppler.peakNegativeHz}
-              />
-            ) : (
-              <StatusLine>
-                {dopplerNote ?? 'Press Compute to plot Doppler for the next pass.'}
+            <div className={styles.alerts}>
+              <StatusLine tone="error" role="alert">
+                {error}
               </StatusLine>
-            )}
-            {doppler && dopplerNote && <StatusLine>{dopplerNote}</StatusLine>}
-          </Card>
+            </div>
+          )}
 
-          <Card title="Link budget (now)">
-            {budget ? (
-              <LinkBudgetTable budget={budget} />
-            ) : (
-              <StatusLine>No budget computed yet.</StatusLine>
-            )}
-          </Card>
+          {!selectedSat ? (
+            <section className={styles.emptyState}>
+              <div className={styles.signalMark} aria-hidden="true">
+                <span />
+              </div>
+              <span className={styles.emptyEyebrow}>Downlink planning</span>
+              <h2>Choose a satellite and RF profile</h2>
+              <p>
+                Start from a visible satellite, favorite, planned pass or the full catalog. Then
+                select its downlink profile before calculating.
+              </p>
+              <Button variant="primary" onClick={() => setPickerOpen(true)}>
+                Set Satellite &amp; Frequency
+              </Button>
+            </section>
+          ) : !hasComputed && !loading ? (
+            <section className={styles.readyState}>
+              <div className={styles.readyTarget}>
+                <span className={styles.readyEyebrow}>Ready for RF analysis</span>
+                <h2>{selectedSat.name}</h2>
+                <span>NORAD {selectedSat.norad_id}</span>
+              </div>
+
+              <div className={styles.readySummary}>
+                <button type="button" onClick={() => setPickerOpen(true)}>
+                  <span>Downlink profile</span>
+                  <strong>{profileLabel}</strong>
+                  <small>Change</small>
+                </button>
+                <div className={styles.modeCard}>
+                  <span>Operating mode</span>
+                  <div className={styles.modeOptions} role="group" aria-label="Operating mode">
+                    {MODES.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        className={item === mode ? styles.modeActive : undefined}
+                        aria-pressed={item === mode}
+                        onClick={() => setMode(item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {rfSelection.kind === 'none' && (
+                <Field label="Custom downlink frequency (MHz)" className={styles.customField}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={customFreqMHz}
+                    onChange={(event) => {
+                      setCustomFreqMHz(event.target.value);
+                      setError(null);
+                    }}
+                    placeholder="e.g. 145.8250"
+                  />
+                </Field>
+              )}
+
+              <p>
+                SkyComet will calculate the next pass Doppler curve and the current link margin
+                using your station profile.
+              </p>
+              <Button variant="primary" onClick={handleCompute} disabled={configuredFreqHz == null}>
+                Compute RF Plan
+              </Button>
+            </section>
+          ) : loading ? (
+            <section className={styles.loadingState}>
+              <span className={styles.loadingPulse} />
+              <h2>Calculating the RF plan</h2>
+              <p>Propagating the next pass and evaluating the current downlink path.</p>
+            </section>
+          ) : (
+            <main className={styles.results}>
+              <section className={styles.summaryGrid} aria-label="RF plan summary">
+                <article className={styles.summaryCard}>
+                  <span>Link margin now</span>
+                  <strong className={budget ? styles[`margin_${marginTone(budget.marginDb)}`] : ''}>
+                    {budget ? `${budget.marginDb >= 0 ? '+' : ''}${budget.marginDb.toFixed(1)} dB` : '—'}
+                  </strong>
+                  <small>{budget ? `${budget.snrDb.toFixed(1)} dB SNR` : 'Budget unavailable'}</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Receive frequency</span>
+                  <strong>{configuredFreqHz ? formatFreq(configuredFreqHz) : '—'}</strong>
+                  <small>{mode} · {profileLabel}</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Doppler span</span>
+                  <strong>
+                    {doppler
+                      ? `${formatShift(doppler.peakPositiveHz)} / ${formatShift(doppler.peakNegativeHz)}`
+                      : '—'}
+                  </strong>
+                  <small>Approach / recession</small>
+                </article>
+                <article className={styles.summaryCard}>
+                  <span>Next pass</span>
+                  <strong>
+                    {activePass ? `${formatTime(activePass.aos)} → ${formatTime(activePass.los)}` : '—'}
+                  </strong>
+                  <small>
+                    {activePass
+                      ? `${activePass.maxElevationDeg.toFixed(1)}° max · ${formatDuration(activePass.durationSeconds)}`
+                      : dopplerNote ?? 'No pass in 24 hours'}
+                  </small>
+                </article>
+              </section>
+
+              <section className={styles.mainGrid}>
+                <Card
+                  title="Doppler tuning curve"
+                  className={styles.dopplerCard}
+                  action={activePass ? <Tag tone="accent">Next pass</Tag> : undefined}
+                >
+                  {doppler ? (
+                    <div className={styles.dopplerBody}>
+                      <DopplerChart
+                        samples={doppler.samples}
+                        peakPositiveHz={doppler.peakPositiveHz}
+                        peakNegativeHz={doppler.peakNegativeHz}
+                        width={760}
+                        height={290}
+                      />
+                      <div className={styles.tuningStrip}>
+                        <TuningPoint
+                          label="AOS · tune high"
+                          time={activePass ? formatTime(activePass.aos) : '—'}
+                          sample={firstSample}
+                        />
+                        <TuningPoint
+                          label="TCA · center"
+                          time={tcaSample ? formatDuration(tcaSample.timeOffsetSec) : '—'}
+                          sample={tcaSample}
+                        />
+                        <TuningPoint
+                          label="LOS · tune low"
+                          time={activePass ? formatTime(activePass.los) : '—'}
+                          sample={lastSample}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.cardEmpty}>
+                      <StatusLine>{dopplerNote ?? 'Doppler data unavailable.'}</StatusLine>
+                    </div>
+                  )}
+                </Card>
+
+                <Card
+                  title="Pass & signal context"
+                  className={styles.contextCard}
+                  action={budget ? <Tag tone={marginTone(budget.marginDb)}>{budget.marginDb >= 0 ? 'Decodable' : 'Below threshold'}</Tag> : undefined}
+                >
+                  <dl className={styles.contextList}>
+                    <MetricRow label="Satellite" value={selectedSat.name} note={`NORAD ${selectedSat.norad_id}`} />
+                    <MetricRow label="RF profile" value={profileLabel} note={profileBand} />
+                    <MetricRow
+                      label="Geometry now"
+                      value={budget ? `${budget.elevationDeg.toFixed(1)}° elevation` : '—'}
+                      note={budget ? `${budget.rangeKm.toFixed(0)} km slant range` : undefined}
+                    />
+                    <MetricRow
+                      label="Received signal"
+                      value={budget ? `${budget.pRxDbm.toFixed(1)} dBm` : '—'}
+                      note={budget ? `${budget.nDbm.toFixed(1)} dBm noise floor` : undefined}
+                    />
+                    <MetricRow
+                      label="Required SNR"
+                      value={budget ? `${budget.requiredSnrDb.toFixed(1)} dB` : '—'}
+                      note={budget ? `${budget.snrDb.toFixed(1)} dB available` : undefined}
+                    />
+                    <MetricRow
+                      label="Pass window"
+                      value={activePass ? `${formatTime(activePass.aos)} → ${formatTime(activePass.los)}` : '—'}
+                      note={activePass ? `${formatDuration(activePass.durationSeconds)} · ${activePass.maxElevationDeg.toFixed(1)}° maximum` : undefined}
+                    />
+                    <MetricRow
+                      label="Doppler correction"
+                      value={tcaSample ? formatShift(tcaSample.deltaFHz) : '—'}
+                      note={tcaSample ? `${formatFreq(tcaSample.observedFreqHz)} at TCA` : undefined}
+                    />
+                  </dl>
+                </Card>
+              </section>
+
+              <Card title="Link analysis" className={styles.linkAnalysisCard}>
+                <div className={styles.linkAnalysisBody}>
+                  <div className={styles.pathColumn}>
+                    <span className={styles.sectionLabel}>Signal path</span>
+                  {budget ? (
+                    <div className={styles.signalPath}>
+                      <PathStep label="EIRP" value={`${budget.eirpDbm >= 0 ? '+' : ''}${budget.eirpDbm.toFixed(1)} dBm`} tone="source" />
+                      <span className={styles.pathArrow}>→</span>
+                      <PathStep label="Free-space loss" value={`−${budget.fsplDb.toFixed(1)} dB`} tone="loss" />
+                      <span className={styles.pathArrow}>→</span>
+                      <PathStep label="Pointing + polarization" value={`−${(budget.offAxisLossDb + budget.polLossDb).toFixed(1)} dB`} tone="loss" />
+                      <span className={styles.pathArrow}>→</span>
+                      <PathStep label="Effective RX gain" value={`${budget.gRxEffectiveDbi >= 0 ? '+' : ''}${budget.gRxEffectiveDbi.toFixed(1)} dBi`} tone="gain" />
+                      <span className={styles.pathArrow}>→</span>
+                      <PathStep label="At receiver" value={`${budget.pRxDbm.toFixed(1)} dBm`} tone="result" />
+                    </div>
+                  ) : (
+                    <StatusLine>Signal path unavailable.</StatusLine>
+                  )}
+                  </div>
+
+                  <div className={styles.analysisLower}>
+                    <div className={styles.budgetColumn}>
+                      <span className={styles.sectionLabel}>Budget breakdown</span>
+                      {budget ? <LinkBudgetTable budget={budget} showFooter={false} /> : <StatusLine>Budget unavailable.</StatusLine>}
+                    </div>
+
+                    <div className={styles.verdictColumn}>
+                      <span className={styles.sectionLabel}>Reception verdict</span>
+                      <div className={styles.verdictPanel}>
+                        <div className={styles.verdictHead}>
+                          <span>Current downlink</span>
+                          {budget && (
+                            <Tag tone={marginTone(budget.marginDb)}>
+                              {budget.marginDb >= 0 ? 'Decodable' : 'Below threshold'}
+                            </Tag>
+                          )}
+                        </div>
+                      {budget ? (
+                        <>
+                          <div className={styles.verdictHero}>
+                            <span>Link margin now</span>
+                            <strong className={styles[`margin_${marginTone(budget.marginDb)}`]}>
+                              {budget.marginDb >= 0 ? '+' : ''}{budget.marginDb.toFixed(1)} dB
+                            </strong>
+                            <p>{marginSummary(budget.marginDb)}</p>
+                          </div>
+                          <div className={styles.verdictMetrics}>
+                            <VerdictMetric label="Available SNR" value={`${budget.snrDb.toFixed(1)} dB`} />
+                            <VerdictMetric label={`Required for ${budget.mode}`} value={`${budget.requiredSnrDb.toFixed(1)} dB`} />
+                            <VerdictMetric label="Propagation loss" value={`−${budget.fsplDb.toFixed(1)} dB`} />
+                            <VerdictMetric label="Total station loss" value={`−${(budget.polLossDb + budget.offAxisLossDb).toFixed(1)} dB`} />
+                          </div>
+                        </>
+                      ) : (
+                        <StatusLine>Reception verdict unavailable.</StatusLine>
+                      )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </main>
+          )}
         </div>
-      </div>
+
+        {pickerOpen && (
+          <SetSatelliteDialog
+            title="Set satellite & frequency"
+            saveLabel="Use RF setup"
+            satellites={satellites}
+            visible={visible}
+            favorites={favorites}
+            onToggleFavorite={toggleFavorite}
+            plan={plan}
+            onRemovePlanned={removePlanned}
+            initialSat={selectedSat}
+            initialRf={rfSelection}
+            onCancel={() => setPickerOpen(false)}
+            onSave={handleSetupSave}
+            onReset={handleSetupReset}
+          />
+        )}
       </ScreenPanel>
     </ScreenFrame>
+  );
+}
+
+function TuningPoint({
+  label,
+  time,
+  sample,
+}: {
+  label: string;
+  time: string;
+  sample: DopplerSample | null;
+}) {
+  return (
+    <div className={styles.tuningPoint}>
+      <span>{label}</span>
+      <strong>{sample ? formatFreq(sample.observedFreqHz) : '—'}</strong>
+      <small>
+        {time}{sample ? ` · ${formatShift(sample.deltaFHz)}` : ''}
+      </small>
+    </div>
+  );
+}
+
+function MetricRow({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className={styles.metricRow}>
+      <dt>{label}</dt>
+      <dd>
+        <strong>{value}</strong>
+        {note && <span>{note}</span>}
+      </dd>
+    </div>
+  );
+}
+
+function PathStep({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'source' | 'loss' | 'gain' | 'result';
+}) {
+  return (
+    <div className={`${styles.pathStep} ${styles[`path_${tone}`]}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function VerdictMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }

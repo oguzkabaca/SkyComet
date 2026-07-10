@@ -5,7 +5,7 @@
   display: block;
   width: 100%;
   height: auto;
-  max-width: 640px;
+  max-width: none;
   background: var(--bg-inset);
   border-radius: var(--r-md);
 }
@@ -19,17 +19,5 @@
 .label {
   fill: var(--fg-dim);
   font-size: 12px;
-  font-family: var(--font-mono);
-}
-
-.peakPos {
-  fill: var(--ok);
-  font-size: 11px;
-  font-family: var(--font-mono);
-}
-
-.peakNeg {
-  fill: var(--danger);
-  font-size: 11px;
   font-family: var(--font-mono);
 }

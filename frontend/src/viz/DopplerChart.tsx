@@ -19,10 +19,6 @@ interface Props {
  * X axis: time_offset_sec (0 → T, where T = pass duration).
  * Y axis: Δf in kHz with 0 centered. Auto-scale rounds to nearest 1/5 kHz.
  */
-function formatKHz(hz: number, digits = 2): string {
-  return `${(hz / 1000).toFixed(digits)} kHz`;
-}
-
 function roundedScaleKHz(peakHz: number): number {
   const absKHz = Math.abs(peakHz) / 1000;
   // round up to next 1 kHz if small, else next 5 kHz
@@ -101,6 +97,8 @@ export function DopplerChart({
     <svg
       width={width}
       height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
       className={styles.chart}
       role="img"
       aria-label="doppler curve"
@@ -186,23 +184,6 @@ export function DopplerChart({
         strokeLinecap="round"
       />
 
-      {/* Peak labels */}
-      <text
-        x={padLeft + plotW - 6}
-        y={padTop + 14}
-        textAnchor="end"
-        className={styles.peakPos}
-      >
-        peak +{formatKHz(peakPositiveHz)}
-      </text>
-      <text
-        x={padLeft + plotW - 6}
-        y={padTop + plotH - 6}
-        textAnchor="end"
-        className={styles.peakNeg}
-      >
-        peak −{formatKHz(Math.abs(peakNegativeHz))}
-      </text>
     </svg>
   );
 }

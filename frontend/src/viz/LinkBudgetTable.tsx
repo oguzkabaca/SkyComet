@@ -4,6 +4,7 @@ import styles from './LinkBudgetTable.module.css';
 
 interface Props {
   budget: LinkBudget;
+  showFooter?: boolean;
 }
 
 // Margin thresholds (docs/calculations.md §6.6 — margin = SNR - required SNR).
@@ -32,7 +33,7 @@ interface Row {
   className?: string;
 }
 
-export function LinkBudgetTable({ budget }: Props) {
+export function LinkBudgetTable({ budget, showFooter = true }: Props) {
   const rows: Row[] = [
     { label: 'EIRP', value: fmt(budget.eirpDbm, 1, true), unit: 'dBm' },
     { label: 'FSPL', value: `−${fmt(budget.fsplDb, 1)}`, unit: 'dB' },
@@ -81,10 +82,12 @@ export function LinkBudgetTable({ budget }: Props) {
           ))}
         </tbody>
       </table>
-      <p className={styles.footer}>
-        Required SNR (mode <span className={styles.mono}>{budget.mode}</span>):{' '}
-        <span className={styles.mono}>{fmt(budget.requiredSnrDb, 1)} dB</span>
-      </p>
+      {showFooter && (
+        <p className={styles.footer}>
+          Required SNR (mode <span className={styles.mono}>{budget.mode}</span>):{' '}
+          <span className={styles.mono}>{fmt(budget.requiredSnrDb, 1)} dB</span>
+        </p>
+      )}
     </div>
   );
 }
