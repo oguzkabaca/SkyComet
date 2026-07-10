@@ -7,6 +7,11 @@ import styles from './SatellitePickerDialog.module.css';
 
 type SourceTab = 'visible' | 'favorites' | 'plan' | 'all';
 
+/**
+ * `satellites` (and `visible`) already come in amateur-only from the backend
+ * default (`docs/calculations.md` §7.6) — the `all` tab name/value is a
+ * historical holdover from before that default existed.
+ */
 const ALL_TAB_ROW_CAP = 150;
 
 interface Props {
@@ -148,7 +153,7 @@ export function SatellitePickerDialog({
             {plan.length > 0 && <span className={styles.planCount}>{plan.length}</span>}
           </TabButton>
           <TabButton active={tab === 'all'} onClick={() => setTab('all')}>
-            All satellites
+            Amateur radio
           </TabButton>
         </div>
 

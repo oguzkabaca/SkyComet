@@ -19,7 +19,11 @@ import styles from './SetSatelliteDialog.module.css';
 /** Satellite sources the picker can browse. */
 type SourceTab = 'visible' | 'favorites' | 'plan' | 'all';
 
-/** Cap for the "All satellites" tab — the full TLE list is ~2700 rows. */
+/**
+ * Cap for the "Amateur radio" tab. `satellites` (and `visible`) already come
+ * in amateur-only from the backend default (`docs/calculations.md` §7.6, the
+ * `all` tab name is a historical holdover from before that default existed).
+ */
 const ALL_TAB_ROW_CAP = 150;
 
 interface Props {
@@ -60,7 +64,7 @@ function matches(name: string, noradId: number, query: string): boolean {
 /**
  * "Set a Satellite" modal (replaces the inline header selectors): pick a
  * satellite from a source tab — Visible now / Favorites / Pass plan (queued
- * from the Pass Planner, with a live countdown to each pass) / All
+ * from the Pass Planner, with a live countdown to each pass) / Amateur radio
  * (searchable) — then pick one of its RF profiles. Save persists the pair as
  * the screen's target; Reset clears it. Mounted fresh on each open (the
  * parent renders it conditionally), so the draft seeds from props and Cancel
@@ -289,7 +293,7 @@ export function SetSatelliteDialog({
             {plan.length > 0 && <span className={styles.planCount}>{plan.length}</span>}
           </TabButton>
           <TabButton on={tab === 'all'} onClick={() => setTab('all')}>
-            All satellites
+            Amateur radio
           </TabButton>
         </div>
 

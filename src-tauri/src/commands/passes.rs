@@ -12,6 +12,7 @@ use crate::core::orbit::pass_planner::{
 };
 use crate::core::orbit::sgp4_engine::Propagator;
 use crate::core::tle::cache::TleCache;
+use crate::core::tle::fetcher::DEFAULT_AMATEUR_ONLY;
 use crate::core::tracking;
 
 #[derive(Debug, Serialize)]
@@ -188,7 +189,8 @@ pub fn get_pass_track(
 }
 
 /// All-sky pass schedule (canon §5.9) — the Pass Planner timeline hero.
-/// Heavy (~350 satellites × 24 h coarse scan ≈ 10⁶ propagations), so the
+/// Heavy (up to ~350 satellites, fewer with the amateur-only default × 24 h
+/// coarse scan ≈ 10⁶ propagations in the worst case), so the
 /// batch runs on a blocking worker; the UI thread never stalls. On demand
 /// only — the frontend triggers it explicitly, there is no periodic loop.
 #[tauri::command]
@@ -198,6 +200,7 @@ pub async fn list_all_passes(
     hours_ahead: Option<u32>,
     min_elevation_deg: Option<f64>,
     min_max_elevation_deg: Option<f64>,
+    amateur_only: Option<bool>,
 ) -> Result<Vec<SatelliteScheduleDto>, CommandError> {
     let db = db.inner().clone();
     let cache = Arc::clone(cache.inner());
@@ -214,10 +217,11 @@ pub async fn list_all_passes(
     let min_max_el = min_max_elevation_deg
         .unwrap_or(pp_params::SCHEDULE_MIN_MAX_EL_DEG)
         .clamp(0.0, 90.0);
+    let amateur_only = amateur_only.unwrap_or(DEFAULT_AMATEUR_ONLY);
     let task = tauri::async_runtime::spawn_blocking(move || {
         let now = Utc::now();
         let until = now + Duration::hours(hours);
-        tracking::sky_schedule(&db, &cache, now, until, search, min_max_el)
+        tracking::sky_schedule(&db, &cache, now, until, search, min_max_el, amateur_only)
     });
     let schedule = task
         .await

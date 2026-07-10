@@ -21,6 +21,7 @@ use crate::core::orbit::sgp4_engine::Propagator;
 use crate::core::satellite::{self, FrequencyRecord, SatelliteDetail, SatelliteRecord};
 use crate::core::sync::{self, Dataset, SyncOutcome};
 use crate::core::tle::cache::TleCache;
+use crate::core::tle::fetcher::DEFAULT_AMATEUR_ONLY;
 
 /// Roadmap §F5: prompt the user to re-sync after this much.
 const CATALOG_STALE_DAYS: i64 = 30;
@@ -208,10 +209,13 @@ pub fn list_satellites_page(
     db: State<'_, Database>,
     offset: Option<i64>,
     limit: Option<i64>,
+    amateur_only: Option<bool>,
 ) -> Result<Vec<SatelliteSummaryDto>, CommandError> {
     let offset = offset.unwrap_or(0).max(0);
     let limit = limit.unwrap_or(DEFAULT_LIST_LIMIT).clamp(1, 1000);
-    let rows = satellite::repo::list_page(db.inner(), offset, limit).map_err(map_catalog_err)?;
+    let amateur_only = amateur_only.unwrap_or(DEFAULT_AMATEUR_ONLY);
+    let rows = satellite::repo::list_page(db.inner(), offset, limit, amateur_only)
+        .map_err(map_catalog_err)?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
@@ -220,9 +224,12 @@ pub fn search_satellites(
     db: State<'_, Database>,
     query: String,
     limit: Option<i64>,
+    amateur_only: Option<bool>,
 ) -> Result<Vec<SatelliteSummaryDto>, CommandError> {
     let limit = limit.unwrap_or(SEARCH_RESULT_LIMIT).clamp(1, 1000);
-    let rows = satellite::repo::search(db.inner(), &query, limit).map_err(map_catalog_err)?;
+    let amateur_only = amateur_only.unwrap_or(DEFAULT_AMATEUR_ONLY);
+    let rows = satellite::repo::search(db.inner(), &query, limit, amateur_only)
+        .map_err(map_catalog_err)?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 

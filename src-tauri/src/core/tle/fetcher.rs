@@ -7,7 +7,13 @@ const CELESTRAK_BASE: &str = "https://celestrak.org/NORAD/elements/gp.php";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const USER_AGENT: &str = concat!("skycomet/", env!("CARGO_PKG_VERSION"));
 
-#[derive(Debug, Clone, Copy)]
+/// Product default (`docs/calculations.md` §7.6): the Catalog, satellite
+/// pickers (Quick Track / RF Planner / Satellite Passes) and Pass Planner's
+/// schedule all show amateur-radio satellites only until the caller opts
+/// into "show everything".
+pub const DEFAULT_AMATEUR_ONLY: bool = true;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CelestrakGroup {
     Stations,
     Amateur,
@@ -17,9 +23,18 @@ pub enum CelestrakGroup {
 
 impl CelestrakGroup {
     /// Every group the snapshot builder seeds (`scripts/build_catalog_snapshot.py`);
-    /// the runtime TLE sync refreshes the same set.
+    /// the runtime TLE sync refreshes the same set, in this exact order.
+    ///
+    /// `satellites_tle` keeps one row per NORAD, so a satellite in more than
+    /// one group only keeps the `source` tag of whichever group is written
+    /// *last* (`core::tle::repo::upsert` is `ON CONFLICT DO UPDATE`).
+    /// `Amateur` is deliberately last so an amateur-group satellite's tag
+    /// always survives, regardless of its other memberships (e.g. ISS is
+    /// also `stations` and `visual`) — the amateur-only default filter
+    /// (§7.6) depends on this order. Do not reorder without updating that
+    /// canon note.
     pub const ALL: [CelestrakGroup; 4] =
-        [Self::Stations, Self::Amateur, Self::Weather, Self::Visual];
+        [Self::Stations, Self::Weather, Self::Visual, Self::Amateur];
 
     pub fn as_query(self) -> &'static str {
         match self {
@@ -98,6 +113,14 @@ mod tests {
     fn group_source_matches_snapshot_builder_convention() {
         assert_eq!(CelestrakGroup::Stations.as_source(), "celestrak/stations");
         assert_eq!(CelestrakGroup::ALL.len(), 4);
+    }
+
+    /// Locks the sync order invariant the amateur-only default filter
+    /// depends on (§7.6): `Amateur` must be synced last so its `source` tag
+    /// wins over any other group a satellite also belongs to.
+    #[test]
+    fn amateur_group_is_synced_last() {
+        assert_eq!(CelestrakGroup::ALL.last(), Some(&CelestrakGroup::Amateur));
     }
 
     #[tokio::test]

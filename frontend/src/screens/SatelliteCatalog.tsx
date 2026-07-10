@@ -4,6 +4,7 @@ import type { ChangeEvent } from 'react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
+import { SegmentedControl } from '../components/SegmentedControl';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
 import {
@@ -73,16 +74,29 @@ function statusTone(status: string | null): Tone {
   return 'neutral';
 }
 
-async function fetchRows(query: string, page: number): Promise<CatalogSummary[]> {
+type ScopeFilter = 'amateur' | 'all';
+
+const SCOPE_OPTIONS: { value: ScopeFilter; label: string }[] = [
+  { value: 'amateur', label: 'Amateur radio' },
+  { value: 'all', label: 'All satellites' },
+];
+
+async function fetchRows(
+  query: string,
+  page: number,
+  scope: ScopeFilter,
+): Promise<CatalogSummary[]> {
+  const amateurOnly = scope === 'amateur';
   if (query.trim() === '') {
-    return listCatalogPage(page * PAGE_SIZE, PAGE_SIZE);
+    return listCatalogPage(page * PAGE_SIZE, PAGE_SIZE, amateurOnly);
   }
-  return searchSatellites(query);
+  return searchSatellites(query, undefined, amateurOnly);
 }
 
 export function SatelliteCatalog() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [scope, setScope] = useState<ScopeFilter>('amateur');
   const [page, setPage] = useState(0);
   // `null` = first load pending; `[]` after the fetch resolves to empty.
   const [rows, setRows] = useState<CatalogSummary[] | null>(null);
@@ -120,12 +134,12 @@ export function SatelliteCatalog() {
     };
   }, [query]);
 
-  // Load list whenever the debounced query, page, or reloadKey changes.
+  // Load list whenever the debounced query, page, scope, or reloadKey changes.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const data = await fetchRows(debouncedQuery, page);
+        const data = await fetchRows(debouncedQuery, page, scope);
         if (!cancelled) {
           setRows(data);
           setError(null);
@@ -140,7 +154,7 @@ export function SatelliteCatalog() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery, page, reloadKey]);
+  }, [debouncedQuery, page, scope, reloadKey]);
 
   // Load detail when selection changes (or sync forces a reload).
   useEffect(() => {
@@ -238,6 +252,11 @@ export function SatelliteCatalog() {
     setQuery(e.target.value);
   };
 
+  const onScopeChange = (next: ScopeFilter) => {
+    setScope(next);
+    setPage(0);
+  };
+
   const onSync = () => {
     setSyncMessage('starting…');
     setSyncPhase('started');
@@ -276,6 +295,12 @@ export function SatelliteCatalog() {
           value={query}
           onChange={onQueryChange}
           className={styles.search}
+        />
+        <SegmentedControl
+          options={SCOPE_OPTIONS}
+          value={scope}
+          onChange={onScopeChange}
+          ariaLabel="Catalog scope"
         />
         <Button variant="primary" onClick={onSync}>
           Sync now

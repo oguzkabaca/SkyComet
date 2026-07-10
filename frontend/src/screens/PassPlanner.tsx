@@ -54,7 +54,7 @@ const QUALITY_OPTIONS: { value: QualityChoice; label: string }[] = [
   { value: 'overhead', label: 'Overhead' },
 ];
 
-/** Module-level cache — the ~350-satellite batch takes seconds and must not
+/** Module-level cache — the batch (amateur-only by default, §7.6) takes seconds and must not
  * re-run on every navigation to this screen. */
 let scheduleCache: { schedule: SatelliteSchedule[]; fetchedAtMs: number } | null = null;
 

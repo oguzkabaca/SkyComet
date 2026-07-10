@@ -191,16 +191,18 @@ pub struct VisibleSatellite {
 /// Every TLE-backed satellite whose elevation is ≥ 0° right now, sorted by
 /// elevation (highest first). One propagation per satellite — cheap enough for
 /// the on-demand selector list; no location configured yields an empty list.
+/// `amateur_only` — see `tle::repo::list_summaries`.
 pub fn visible_satellites(
     db: &Database,
     cache: &TleCache,
     now: DateTime<Utc>,
+    amateur_only: bool,
 ) -> Result<Vec<VisibleSatellite>, TrackingError> {
     let Some(observer) = location::load_location(db)? else {
         return Ok(Vec::new());
     };
     let mut out = Vec::new();
-    for (norad, name) in super::tle::repo::list_summaries(db)? {
+    for (norad, name) in super::tle::repo::list_summaries(db, amateur_only)? {
         let Some(record) = cache.get_or_load(db, norad)? else {
             continue;
         };
@@ -241,7 +243,8 @@ pub struct SatelliteSchedule {
 /// satellites left with no passes are omitted; the result is sorted by each
 /// satellite's first AOS. Missing/unparseable TLEs are skipped best-effort
 /// (`visible_satellites` policy); no location configured yields an empty
-/// schedule. Heavy — callers run it off the UI thread.
+/// schedule. Heavy — callers run it off the UI thread. `amateur_only` — see
+/// `tle::repo::list_summaries`.
 pub fn sky_schedule(
     db: &Database,
     cache: &TleCache,
@@ -249,12 +252,13 @@ pub fn sky_schedule(
     until: DateTime<Utc>,
     search: PassSearchParams,
     min_max_elevation_deg: f64,
+    amateur_only: bool,
 ) -> Result<Vec<SatelliteSchedule>, TrackingError> {
     let Some(observer) = location::load_location(db)? else {
         return Ok(Vec::new());
     };
     let mut out = Vec::new();
-    for (norad, name) in super::tle::repo::list_summaries(db)? {
+    for (norad, name) in super::tle::repo::list_summaries(db, amateur_only)? {
         let Some(record) = cache.get_or_load(db, norad)? else {
             continue;
         };
@@ -415,7 +419,7 @@ mod tests {
         tle_repo_test::upsert(&db, &rec, "test").unwrap();
         let cache = TleCache::new();
         // No location saved → empty list, not an error.
-        let list = visible_satellites(&db, &cache, Utc::now()).unwrap();
+        let list = visible_satellites(&db, &cache, Utc::now(), false).unwrap();
         assert!(list.is_empty());
     }
 
@@ -428,13 +432,55 @@ mod tests {
         let cache = TleCache::new();
         // Whatever the instant, every entry is above the horizon and the list is
         // sorted by elevation descending.
-        let list = visible_satellites(&db, &cache, rec.epoch).unwrap();
+        let list = visible_satellites(&db, &cache, rec.epoch, false).unwrap();
         for w in list.windows(2) {
             assert!(w[0].elevation_deg >= w[1].elevation_deg);
         }
         for v in &list {
             assert!(v.elevation_deg >= 0.0);
         }
+    }
+
+    #[test]
+    fn visible_satellites_amateur_only_excludes_non_amateur_source() {
+        let db = Database::open_in_memory().unwrap();
+        location::save_location(&db, &Location::new(41.0082, 28.9784, 35.0).unwrap()).unwrap();
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        tle_repo_test::upsert(&db, &rec, "celestrak/weather").unwrap();
+        let cache = TleCache::new();
+
+        // Find a guaranteed-visible instant (a pass TCA, its highest-elevation
+        // point) instead of assuming the TLE epoch happens to be one.
+        let now = rec.epoch;
+        let until = now + chrono::Duration::hours(24);
+        let schedule = sky_schedule(
+            &db,
+            &cache,
+            now,
+            until,
+            PassSearchParams::default(),
+            0.0,
+            false,
+        )
+        .unwrap();
+        let tca = schedule
+            .iter()
+            .find(|s| s.norad_id == 25544)
+            .and_then(|s| s.passes.first())
+            .map(|p| p.tca)
+            .expect("ISS has a pass within 24 h of its own epoch");
+
+        let unfiltered = visible_satellites(&db, &cache, tca, false).unwrap();
+        assert!(
+            !unfiltered.is_empty(),
+            "sanity: ISS is above the horizon at TCA"
+        );
+
+        let amateur_only = visible_satellites(&db, &cache, tca, true).unwrap();
+        assert!(
+            amateur_only.is_empty(),
+            "a weather-sourced TLE must not appear in the amateur-only list"
+        );
     }
 
     #[test]
@@ -452,6 +498,7 @@ mod tests {
             now + chrono::Duration::hours(24),
             PassSearchParams::default(),
             0.0,
+            false,
         )
         .unwrap();
         assert!(schedule.is_empty());
@@ -468,15 +515,32 @@ mod tests {
         let until = now + chrono::Duration::hours(24);
 
         // Unfiltered: ISS yields multiple passes over Istanbul in 24 h.
-        let all = sky_schedule(&db, &cache, now, until, PassSearchParams::default(), 0.0).unwrap();
+        let all = sky_schedule(
+            &db,
+            &cache,
+            now,
+            until,
+            PassSearchParams::default(),
+            0.0,
+            false,
+        )
+        .unwrap();
         let iss = all.iter().find(|s| s.norad_id == 25544).expect("ISS entry");
         assert!(iss.passes.len() >= 4, "got {} passes", iss.passes.len());
 
         // Max-el floor: every surviving pass peaks at or above it, and the
         // filtered set is a subset of the unfiltered one.
         let floor = 10.0;
-        let filtered =
-            sky_schedule(&db, &cache, now, until, PassSearchParams::default(), floor).unwrap();
+        let filtered = sky_schedule(
+            &db,
+            &cache,
+            now,
+            until,
+            PassSearchParams::default(),
+            floor,
+            false,
+        )
+        .unwrap();
         for sat in &filtered {
             assert!(!sat.passes.is_empty(), "empty satellite leaked");
             for p in &sat.passes {
@@ -488,8 +552,16 @@ mod tests {
         assert!(filtered_count <= all_count);
 
         // An impossible floor empties the schedule entirely.
-        let none =
-            sky_schedule(&db, &cache, now, until, PassSearchParams::default(), 90.1).unwrap();
+        let none = sky_schedule(
+            &db,
+            &cache,
+            now,
+            until,
+            PassSearchParams::default(),
+            90.1,
+            false,
+        )
+        .unwrap();
         assert!(none.is_empty());
     }
 

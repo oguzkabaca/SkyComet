@@ -32,7 +32,13 @@ SATELLITES_URL = "https://db.satnogs.org/api/satellites/?format=json"
 TRANSMITTERS_URL = "https://db.satnogs.org/api/transmitters/?format=json"
 
 # CelesTrak GP "3LE" (3-line) endpoints for the groups Skycomet ships.
-CELESTRAK_GROUPS = ("stations", "amateur", "weather", "visual")
+# Order matters: a satellite in more than one group keeps only the last
+# group's `source` tag (see `fetch_celestrak_tles` below). "amateur" is
+# deliberately last so the amateur-only catalog default (docs/calculations.md
+# §7.6) is accurate even for satellites that are also stations/weather/visual
+# (e.g. ISS). Keep this in sync with `CelestrakGroup::ALL` in
+# `src-tauri/src/core/tle/fetcher.rs`.
+CELESTRAK_GROUPS = ("stations", "weather", "visual", "amateur")
 CELESTRAK_URL_TEMPLATE = (
     "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle"
 )
@@ -154,20 +160,22 @@ def parse_celestrak_3le(text: str, source: str) -> list[dict]:
 
 
 def fetch_celestrak_tles() -> list[dict]:
-    """Fetch all configured CelesTrak groups, dedupe by NORAD (first wins)."""
+    """Fetch all configured CelesTrak groups, dedupe by NORAD (last group wins).
+
+    Matches the runtime TLE sync's `ON CONFLICT DO UPDATE` semantics
+    (`core/tle/repo.rs::upsert`) so the bundled snapshot and a live sync
+    agree on which group's `source` tag a multi-group satellite ends up with.
+    """
     seen: dict[int, dict] = {}
     for group in CELESTRAK_GROUPS:
         url = CELESTRAK_URL_TEMPLATE.format(group=group)
         text = fetch_text(url)
         entries = parse_celestrak_3le(text, source=f"celestrak/{group}")
-        added = 0
+        new = sum(1 for e in entries if e["norad_id"] not in seen)
         for entry in entries:
-            if entry["norad_id"] in seen:
-                continue
             seen[entry["norad_id"]] = entry
-            added += 1
         sys.stderr.write(
-            f"  group {group}: parsed {len(entries)}, new {added}, "
+            f"  group {group}: parsed {len(entries)}, new {new}, "
             f"total unique {len(seen)}\n"
         )
     return sorted(seen.values(), key=lambda e: e["norad_id"])

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use super::location::CommandError;
 use crate::core::db::Database;
 use crate::core::tle::cache::TleCache;
+use crate::core::tle::fetcher::DEFAULT_AMATEUR_ONLY;
 use crate::core::tle::repo as tle_repo;
 use crate::core::tracking::{
     self, TrackingError, TrackingSnapshot, TrackingState, VisibleSatellite,
@@ -27,8 +28,12 @@ impl From<TrackingError> for CommandError {
 }
 
 #[tauri::command]
-pub fn list_satellites(db: State<'_, Database>) -> Result<Vec<SatelliteSummary>, CommandError> {
-    let rows = tle_repo::list_summaries(db.inner()).map_err(|e| CommandError {
+pub fn list_satellites(
+    db: State<'_, Database>,
+    amateur_only: Option<bool>,
+) -> Result<Vec<SatelliteSummary>, CommandError> {
+    let amateur_only = amateur_only.unwrap_or(DEFAULT_AMATEUR_ONLY);
+    let rows = tle_repo::list_summaries(db.inner(), amateur_only).map_err(|e| CommandError {
         code: "tle_error".into(),
         message: e.to_string(),
     })?;
@@ -109,7 +114,9 @@ pub fn get_tracking_snapshot(
 pub fn list_visible_satellites(
     db: State<'_, Database>,
     cache: State<'_, Arc<TleCache>>,
+    amateur_only: Option<bool>,
 ) -> Result<Vec<VisibleSatellite>, CommandError> {
-    tracking::visible_satellites(db.inner(), cache.inner(), chrono::Utc::now())
+    let amateur_only = amateur_only.unwrap_or(DEFAULT_AMATEUR_ONLY);
+    tracking::visible_satellites(db.inner(), cache.inner(), chrono::Utc::now(), amateur_only)
         .map_err(CommandError::from)
 }

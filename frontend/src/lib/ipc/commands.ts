@@ -76,8 +76,13 @@ export async function getSiteAnalysis(input: Location): Promise<SiteAnalysis> {
   });
 }
 
-export async function listSatellites(): Promise<SatelliteSummary[]> {
-  return invoke<SatelliteSummary[]>('list_satellites');
+/**
+ * Every trackable (TLE-backed) satellite. `amateurOnly` (default `true`) is
+ * SkyComet's first-version scope (`docs/calculations.md` §7.6) — pass
+ * `false` to see every synced CelesTrak group (stations/weather/visual too).
+ */
+export async function listSatellites(amateurOnly = true): Promise<SatelliteSummary[]> {
+  return invoke<SatelliteSummary[]>('list_satellites', { amateurOnly });
 }
 
 export async function startTracking(norad: number): Promise<void> {
@@ -104,9 +109,9 @@ export interface VisibleSatellite {
   elevation_deg: number;
 }
 
-/** Satellites currently above the horizon, highest elevation first. */
-export async function listVisibleSatellites(): Promise<VisibleSatellite[]> {
-  return invoke<VisibleSatellite[]>('list_visible_satellites');
+/** Satellites currently above the horizon, highest elevation first. `amateurOnly` — see `listSatellites`. */
+export async function listVisibleSatellites(amateurOnly = true): Promise<VisibleSatellite[]> {
+  return invoke<VisibleSatellite[]>('list_visible_satellites', { amateurOnly });
 }
 
 export type PassClassification = 'overhead' | 'good' | 'marginal' | 'poor';
@@ -155,16 +160,19 @@ export interface SatelliteSchedule {
  * All-sky pass schedule for the Pass Planner timeline: every TLE-backed
  * satellite's passes over the window, in-progress ones included. Heavy —
  * the backend batches it on a worker thread; expect seconds, not millis.
+ * `amateurOnly` (default `true`) — see `listSatellites`.
  */
 export async function listAllPasses(
   hoursAhead?: number,
   minElevationDeg?: number,
   minMaxElevationDeg?: number,
+  amateurOnly = true,
 ): Promise<SatelliteSchedule[]> {
   return invoke<SatelliteSchedule[]>('list_all_passes', {
     hoursAhead: hoursAhead ?? null,
     minElevationDeg: minElevationDeg ?? null,
     minMaxElevationDeg: minMaxElevationDeg ?? null,
+    amateurOnly,
   });
 }
 
@@ -239,21 +247,30 @@ export type CatalogSyncEvent =
   | { phase: 'skipped'; lastSyncedAt: string }
   | { phase: 'failed'; code: string; message: string };
 
+/**
+ * `amateurOnly` (default `true`) is SkyComet's first-version catalog scope
+ * (`docs/calculations.md` §7.6): only satellites whose current TLE source
+ * is CelesTrak's amateur-radio group. Pass `false` to see every SatNOGS
+ * satellite, including ones without a TLE or already re-entered.
+ */
 export async function listCatalogPage(
   offset = 0,
   limit = 50,
+  amateurOnly = true,
 ): Promise<CatalogSummary[]> {
   return invoke<CatalogSummary[]>('list_satellites_page', {
     offset,
     limit,
+    amateurOnly,
   });
 }
 
 export async function searchSatellites(
   query: string,
   limit = 200,
+  amateurOnly = true,
 ): Promise<CatalogSummary[]> {
-  return invoke<CatalogSummary[]>('search_satellites', { query, limit });
+  return invoke<CatalogSummary[]>('search_satellites', { query, limit, amateurOnly });
 }
 
 export async function getSatelliteDetail(

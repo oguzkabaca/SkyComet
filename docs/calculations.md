@@ -630,7 +630,7 @@ operator overrides them via Settings → Profile.
 | `search_max_results` | 200 | rows | The UI table shows it comfortably without virtualization; the first 200 are shown even if more match. |
 | `search_min_query_chars` | 1 | character | Even a single character triggers filtering; practical. |
 | `catalog_stale_days` | 30 | day | Frequency + status is stable on the order of weeks; a 30-day "soft" stale threshold for a UI prompt. |
-| `tle_sync_max_age_hours` | 24 | hour | LEO elsets are republished several times a day and SGP4 position error grows fast past ~1 day. Startup auto-sync re-fetches all CelesTrak groups (stations/amateur/weather/visual) when the last TLE sync — or the snapshot seed stamp — is older than this. Distinct from the UI display-stale flag (72 h, SystemHealthBar), which only warns and never fetches. |
+| `tle_sync_max_age_hours` | 24 | hour | LEO elsets are republished several times a day and SGP4 position error grows fast past ~1 day. Startup auto-sync re-fetches all CelesTrak groups — synced in the order stations, weather, visual, **amateur** (`tle::fetcher::CelestrakGroup::ALL`) — when the last TLE sync — or the snapshot seed stamp — is older than this. Distinct from the UI display-stale flag (72 h, SystemHealthBar), which only warns and never fetches. Group order matters: see §7.6. |
 
 ### 7.2 Sub-satellite point (ECEF → geodetic lat/lon)
 
@@ -731,7 +731,7 @@ operator overrides them via Settings → Profile.
 ### 7.6 Catalog search
 
 - **Purpose:** filter the `satellites` table by the user's query.
-- **Input:** `query` (string, trimmed), `limit` (default 200).
+- **Input:** `query` (string, trimmed), `limit` (default 200), `amateur_only` (bool, default `true`).
 - **Output:** `Vec<SatelliteSummary>` (norad_id, name, status, has_tle, has_frequency).
 - **SQL:**
   ```sql
@@ -740,8 +740,9 @@ operator overrides them via Settings → Profile.
          (EXISTS(SELECT 1 FROM satellite_frequencies f WHERE f.norad_id = s.norad_id AND f.status='active')) AS has_frequency
     FROM satellites s
     LEFT JOIN satellites_tle t ON t.norad_id = s.norad_id
-   WHERE s.name LIKE '%' || ?1 || '%' COLLATE NOCASE
-      OR CAST(s.norad_id AS TEXT) = ?1
+   WHERE (s.name LIKE '%' || ?1 || '%' COLLATE NOCASE
+      OR CAST(s.norad_id AS TEXT) = ?1)
+     AND (?3 = 0 OR t.source = ?4)
    ORDER BY (s.status = 'alive') DESC, s.name COLLATE NOCASE
    LIMIT ?2;
   ```
@@ -749,7 +750,30 @@ operator overrides them via Settings → Profile.
 - **Notes:**
   - FTS5 rejected: no gain at 1700 rows, and it would add migration/sync complexity.
   - `has_tle` and `has_frequency` are used for the "No TLE" / "No Frequency" badges in the UI.
-- **Added:** F5. **Status:** active.
+- **Default scope — amateur-radio-only (2026-07-11):** `satellites` (SatNOGS DB full dump, ~2700
+  rows, every lifecycle status) and `satellites_tle` (CelesTrak, 4 groups, ~350 rows, currently-orbiting
+  only) cover very different populations. Measured on the 2026-07-11 seed: only 146/2766 satellites
+  (5.3%) had any TLE, and 1014/2766 (36.7%) were `status = 're-entered'` — with no default filter the
+  Catalog screen was mostly "No TLE" badges plus dead hardware. `amateur_only=true`
+  (`tle::fetcher::DEFAULT_AMATEUR_ONLY`, the SkyComet first-version default; Catalog's UI toggle is
+  "Amateur radio" / "All satellites") restricts rows to `t.source = 'celestrak/amateur'`
+  (`tle::fetcher::CelestrakGroup::Amateur.as_source()`), which reuses the group tag `sync::Dataset::Tle`
+  already writes — no new fetch, no schema change. The same default (and the same `source` filter, via
+  `tle::repo::list_summaries`) applies to every other satellite-picking surface: `list_satellites`
+  (Quick Track / RF Planner / Satellite Passes "Amateur radio" tab), `list_visible_satellites`
+  ("Visible now" tab), and `sky_schedule`/`list_all_passes` (Pass Planner's timeline).
+  - **Multi-group satellites (fixed 2026-07-11):** `satellites_tle` keeps one row per NORAD, so a
+    satellite that is a member of more than one CelesTrak group only keeps the `source` of whichever
+    group `CelestrakGroup::ALL` synced *last* (§7.1). Oğuz caught this in practice — ISS (also
+    `stations`/`visual`) was missing from every amateur-only view. Fix: `CelestrakGroup::ALL` now
+    ends with `Amateur`, so an amateur-group satellite's tag always wins regardless of its other
+    memberships; `scripts/build_catalog_snapshot.py` mirrors the same order and last-wins dedup for
+    the bundled seed. **Residual risk:** if a future CelesTrak group is added to `ALL` *after*
+    `Amateur`, this invariant breaks silently — `amateur_group_is_synced_last` (fetcher.rs) is a unit
+    test, not a compile-time guard. A satellite↔group many-to-many table would remove the ordering
+    dependency entirely; deferred as **B-017** (`docs/backlog.md`) since the reorder fixes the
+    practical symptom today.
+- **Added:** F5. **Status:** active. **Amateur-only default:** 2026-07-11, sprint mode.
 
 ### 7.7 Satellite footprint (horizon circle)
 
@@ -1210,6 +1234,17 @@ invariants asserted by the `core/tracking.rs` unit tests (not a single fabricate
 
 ## Change history
 
+- 2026-07-11 — Amateur-only default extended + multi-group source bug fixed: `tle::repo::list_summaries`
+  gained `amateur_only`, threaded through `visible_satellites`/`sky_schedule` and the
+  `list_satellites`/`list_visible_satellites`/`list_all_passes` commands — Quick Track, RF Planner,
+  Satellite Passes pickers and Pass Planner's schedule now default to amateur-only too (§7.6). Root
+  cause of a missing-ISS report: `CelestrakGroup::ALL` synced `Amateur` before `Visual`, so ISS's
+  `source` tag got overwritten; `ALL` now ends with `Amateur` (§7.1) so it always wins. Snapshot
+  builder script mirrors the same order/dedup. New shared const `DEFAULT_AMATEUR_ONLY`. B-017 opened
+  for the residual many-to-many-table robustness gap.
+- 2026-07-11 — Catalog amateur-only default: §7.6 SQL gained `amateur_only` (default `true`,
+  `t.source = 'celestrak/amateur'`); root cause + known multi-group gap documented in §7.6 notes.
+  No new fetch/schema — reuses the `source` tag `sync::Dataset::Tle` already writes.
 - 2026-07-09 — Pass Planner sprint: §5.9 added — all-sky pass schedule (batch `find_passes_overlapping_now` across every TLE-backed satellite; no new math). §5.1 gained `hours_ahead_max` (168 h), `schedule_hours_max` (48 h) and `schedule_min_max_el` (10°); input clamps added to the pass commands (2026-07-04 audit item).
 - 2026-07-06 — Quick Track redesign (ADR 0013, M3): §7.7 added — satellite footprint (horizon circle) via Earth-central angle λ = acos(R⊕/(R⊕+h)) + spherical destination-point ring; `FOOTPRINT_POINTS_DEFAULT = 72`. Pure `core/orbit/ground_track.rs::footprint_ring`, exposed through `get_ground_track`.
 - 2026-07-08 — Dynamic TLE sync: §7.1 gained `tle_sync_max_age_hours` (24 h) — runtime CelesTrak refresh threshold for `Dataset::Tle` (startup auto-sync + catalog "Sync now" chain). Root cause: TLEs were only ever seeded from the bundled snapshot and aged indefinitely (observed 1000+ h).

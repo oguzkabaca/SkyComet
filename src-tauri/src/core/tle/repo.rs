@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 
+use super::fetcher::CelestrakGroup;
 use super::{TleError, TleRecord};
 use crate::core::db::Database;
 
@@ -77,15 +78,25 @@ pub fn get_by_norad(db: &Database, norad_id: u32) -> Result<Option<TleRecord>, T
     }
 }
 
-/// Lightweight (norad_id, name) summary for catalog dropdowns. Sorted by name.
-pub fn list_summaries(db: &Database) -> Result<Vec<(u32, String)>, TleError> {
+/// Lightweight (norad_id, name) summary for satellite pickers (Quick Track /
+/// RF Planner / Satellite Passes "All"/"Visible now" tabs, Pass Planner's
+/// all-sky schedule). Sorted by name.
+///
+/// `amateur_only` restricts rows to `source = 'celestrak/amateur'`
+/// (`docs/calculations.md` §7.6) — see `tle::fetcher::CelestrakGroup::ALL`
+/// for why `Amateur` must stay the last-synced group for this to be accurate.
+pub fn list_summaries(db: &Database, amateur_only: bool) -> Result<Vec<(u32, String)>, TleError> {
     Ok(db.with_conn(|conn| {
-        let mut stmt =
-            conn.prepare("SELECT norad_id, name FROM satellites_tle ORDER BY name COLLATE NOCASE")?;
+        let mut stmt = conn.prepare(
+            "SELECT norad_id, name FROM satellites_tle
+              WHERE (?1 = 0 OR source = ?2)
+              ORDER BY name COLLATE NOCASE",
+        )?;
         let rows = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, u32>(0)?, row.get::<_, String>(1)?))
-            })?
+            .query_map(
+                rusqlite::params![amateur_only, CelestrakGroup::Amateur.as_source()],
+                |row| Ok((row.get::<_, u32>(0)?, row.get::<_, String>(1)?)),
+            )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     })?)
@@ -134,5 +145,46 @@ mod tests {
     fn get_missing_returns_none() {
         let db = Database::open_in_memory().unwrap();
         assert!(get_by_norad(&db, 1).unwrap().is_none());
+    }
+
+    #[test]
+    fn upsert_source_is_overwritten_by_the_latest_sync() {
+        // Models a satellite (like ISS) that belongs to more than one
+        // CelesTrak group: the row's `source` is whichever group synced
+        // last, not a union of memberships.
+        let db = Database::open_in_memory().unwrap();
+        let rec = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        upsert(&db, &rec, "celestrak/stations").unwrap();
+        upsert(&db, &rec, "celestrak/amateur").unwrap();
+
+        let amateur_only = list_summaries(&db, true).unwrap();
+        assert_eq!(
+            amateur_only,
+            vec![(25544, ISS_NAME.to_string())],
+            "the later sync (amateur) is what the filter sees"
+        );
+    }
+
+    #[test]
+    fn list_summaries_amateur_only_filters_by_source() {
+        let db = Database::open_in_memory().unwrap();
+        let iss = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        upsert(&db, &iss, "celestrak/amateur").unwrap();
+
+        // Distinct NORAD, reusing ISS's line content — `upsert` writes the
+        // record's fields as given and does not re-validate the checksum,
+        // so this is a cheap stand-in for a second real TLE fixture.
+        let wx = TleRecord {
+            norad_id: 33591,
+            name: "NOAA 19".to_string(),
+            ..iss
+        };
+        upsert(&db, &wx, "celestrak/weather").unwrap();
+
+        let unfiltered = list_summaries(&db, false).unwrap();
+        assert_eq!(unfiltered.len(), 2);
+
+        let amateur_only = list_summaries(&db, true).unwrap();
+        assert_eq!(amateur_only, vec![(25544, ISS_NAME.to_string())]);
     }
 }

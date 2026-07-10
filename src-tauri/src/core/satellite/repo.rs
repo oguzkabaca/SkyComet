@@ -8,6 +8,7 @@ use rusqlite::params;
 
 use super::{CatalogError, FrequencyRecord, SatelliteDetail, SatelliteRecord, SatelliteSummary};
 use crate::core::db::Database;
+use crate::core::tle::fetcher::CelestrakGroup;
 
 /// Bulk upsert satellites in a single transaction. Returns the number of
 /// rows written (insert + update).
@@ -115,11 +116,20 @@ pub fn count_frequencies(db: &Database) -> Result<i64, CatalogError> {
     })?)
 }
 
-/// Paginated catalog listing (no filter). For search use `search`.
+/// Paginated catalog listing (no name/NORAD filter). For search use `search`.
+///
+/// `amateur_only` restricts rows to satellites whose current TLE `source`
+/// tag is the CelesTrak amateur-radio group (`docs/calculations.md` §7.6) —
+/// SkyComet's default scope. A satellite that also belongs to a
+/// later-synced CelesTrak group (`stations`/`weather`/`visual`, see
+/// `tle::fetcher::CelestrakGroup::ALL` sync order) loses this tag because
+/// `satellites_tle` keeps one row per NORAD; a known, accepted gap for the
+/// quick-filter approach (see §7.6 notes).
 pub fn list_page(
     db: &Database,
     offset: i64,
     limit: i64,
+    amateur_only: bool,
 ) -> Result<Vec<SatelliteSummary>, CatalogError> {
     db.with_conn(|conn| {
         let mut stmt = conn.prepare(
@@ -129,19 +139,23 @@ pub fn list_page(
                             WHERE f.norad_id = s.norad_id AND f.status = 'active')         AS has_freq
                FROM satellites s
                LEFT JOIN satellites_tle t ON t.norad_id = s.norad_id
+              WHERE (?1 = 0 OR t.source = ?2)
               ORDER BY (s.status = 'alive') DESC, s.name COLLATE NOCASE
-              LIMIT ?1 OFFSET ?2",
+              LIMIT ?3 OFFSET ?4",
         )?;
         let rows = stmt
-            .query_map(params![limit, offset], |row| {
-                Ok(SatelliteSummary {
-                    norad_id: row.get::<_, i64>(0)? as u32,
-                    name: row.get(1)?,
-                    status: row.get(2)?,
-                    has_tle: row.get::<_, i32>(3)? != 0,
-                    has_frequency: row.get::<_, i32>(4)? != 0,
-                })
-            })?
+            .query_map(
+                params![amateur_only, CelestrakGroup::Amateur.as_source(), limit, offset],
+                |row| {
+                    Ok(SatelliteSummary {
+                        norad_id: row.get::<_, i64>(0)? as u32,
+                        name: row.get(1)?,
+                        status: row.get(2)?,
+                        has_tle: row.get::<_, i32>(3)? != 0,
+                        has_frequency: row.get::<_, i32>(4)? != 0,
+                    })
+                },
+            )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     })
@@ -149,15 +163,16 @@ pub fn list_page(
 }
 
 /// Catalog search — name LIKE %query% (case-insensitive) OR exact NORAD match.
-/// SQL mirrors `docs/calculations.md` §7.6.
+/// SQL mirrors `docs/calculations.md` §7.6. `amateur_only` behaves as in `list_page`.
 pub fn search(
     db: &Database,
     query: &str,
     limit: i64,
+    amateur_only: bool,
 ) -> Result<Vec<SatelliteSummary>, CatalogError> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
-        return list_page(db, 0, limit);
+        return list_page(db, 0, limit, amateur_only);
     }
     db.with_conn(|conn| {
         let mut stmt = conn.prepare(
@@ -167,21 +182,25 @@ pub fn search(
                             WHERE f.norad_id = s.norad_id AND f.status = 'active')         AS has_freq
                FROM satellites s
                LEFT JOIN satellites_tle t ON t.norad_id = s.norad_id
-              WHERE s.name LIKE '%' || ?1 || '%' COLLATE NOCASE
-                 OR CAST(s.norad_id AS TEXT) = ?1
+              WHERE (s.name LIKE '%' || ?1 || '%' COLLATE NOCASE
+                 OR CAST(s.norad_id AS TEXT) = ?1)
+                AND (?3 = 0 OR t.source = ?4)
               ORDER BY (s.status = 'alive') DESC, s.name COLLATE NOCASE
               LIMIT ?2",
         )?;
         let rows = stmt
-            .query_map(params![trimmed, limit], |row| {
-                Ok(SatelliteSummary {
-                    norad_id: row.get::<_, i64>(0)? as u32,
-                    name: row.get(1)?,
-                    status: row.get(2)?,
-                    has_tle: row.get::<_, i32>(3)? != 0,
-                    has_frequency: row.get::<_, i32>(4)? != 0,
-                })
-            })?
+            .query_map(
+                params![trimmed, limit, amateur_only, CelestrakGroup::Amateur.as_source()],
+                |row| {
+                    Ok(SatelliteSummary {
+                        norad_id: row.get::<_, i64>(0)? as u32,
+                        name: row.get(1)?,
+                        status: row.get(2)?,
+                        has_tle: row.get::<_, i32>(3)? != 0,
+                        has_frequency: row.get::<_, i32>(4)? != 0,
+                    })
+                },
+            )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     })
@@ -281,6 +300,27 @@ mod tests {
         }
     }
 
+    fn insert_tle(db: &Database, norad: u32, source: &str) {
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO satellites_tle (norad_id, name, line1, line2, epoch, fetched_at, source)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    norad,
+                    "TEST",
+                    "1 00000U 00000A   00000.00000000  .00000000  00000-0  00000-0 0  0000",
+                    "2 00000  00.0000 000.0000 0000000 000.0000 000.0000 00.00000000000000",
+                    "2026-01-01T00:00:00Z",
+                    "2026-01-01T00:00:00Z",
+                    source,
+                ],
+            )
+            .unwrap();
+            Ok(())
+        })
+        .unwrap();
+    }
+
     fn freq(norad: u32, downlink_hz: i64, status: &str) -> FrequencyRecord {
         FrequencyRecord {
             norad_id: norad,
@@ -345,7 +385,7 @@ mod tests {
             ],
         )
         .unwrap();
-        let page = list_page(&db, 0, 10).unwrap();
+        let page = list_page(&db, 0, 10, false).unwrap();
         assert_eq!(
             page.iter().map(|s| s.norad_id).collect::<Vec<_>>(),
             vec![2, 1, 3],
@@ -366,16 +406,62 @@ mod tests {
         )
         .unwrap();
 
-        let by_partial = search(&db, "meteor", 50).unwrap();
+        let by_partial = search(&db, "meteor", 50, false).unwrap();
         assert_eq!(by_partial.len(), 1);
         assert_eq!(by_partial[0].norad_id, 40069);
 
-        let by_norad = search(&db, "25544", 50).unwrap();
+        let by_norad = search(&db, "25544", 50, false).unwrap();
         assert_eq!(by_norad.len(), 1);
         assert_eq!(by_norad[0].norad_id, 25544);
 
-        let blank = search(&db, "   ", 50).unwrap();
+        let blank = search(&db, "   ", 50, false).unwrap();
         assert_eq!(blank.len(), 3, "empty query falls through to list_page");
+    }
+
+    #[test]
+    fn list_page_amateur_only_keeps_only_amateur_source_tle() {
+        let db = fresh_db();
+        upsert_satellites(
+            &db,
+            &[
+                sat(1, "HAM-SAT", "alive"),
+                sat(2, "WEATHER-SAT", "alive"),
+                sat(3, "NO-TLE-SAT", "alive"),
+            ],
+        )
+        .unwrap();
+        insert_tle(&db, 1, "celestrak/amateur");
+        insert_tle(&db, 2, "celestrak/weather");
+        // norad 3 gets no TLE row at all.
+
+        let unfiltered = list_page(&db, 0, 10, false).unwrap();
+        assert_eq!(unfiltered.len(), 3, "no filter returns every satellite");
+
+        let amateur_only = list_page(&db, 0, 10, true).unwrap();
+        assert_eq!(
+            amateur_only.iter().map(|s| s.norad_id).collect::<Vec<_>>(),
+            vec![1],
+            "only the amateur-source TLE row survives the default filter"
+        );
+    }
+
+    #[test]
+    fn search_amateur_only_keeps_only_amateur_source_tle() {
+        let db = fresh_db();
+        upsert_satellites(
+            &db,
+            &[sat(1, "HAM-SAT", "alive"), sat(2, "HAM-LOOKALIKE", "alive")],
+        )
+        .unwrap();
+        insert_tle(&db, 1, "celestrak/amateur");
+        insert_tle(&db, 2, "celestrak/visual");
+
+        let results = search(&db, "ham", 50, true).unwrap();
+        assert_eq!(
+            results.iter().map(|s| s.norad_id).collect::<Vec<_>>(),
+            vec![1],
+            "amateur_only excludes the name match without an amateur-source TLE"
+        );
     }
 
     #[test]
@@ -411,7 +497,7 @@ mod tests {
         .unwrap();
         replace_frequencies(&db, &[freq(1, 145_000_000, "active")]).unwrap();
 
-        let rows = list_page(&db, 0, 10).unwrap();
+        let rows = list_page(&db, 0, 10, false).unwrap();
         let with_freq = rows.iter().find(|s| s.norad_id == 1).unwrap();
         let bare = rows.iter().find(|s| s.norad_id == 2).unwrap();
         assert!(with_freq.has_frequency);
