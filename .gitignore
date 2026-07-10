@@ -101,3 +101,4 @@ docs/decisions/0003-agent-memory-architecture.md
 docs/decisions/0007-multi-agent-conductor.md
 obsidian-vault/
 .obsidian/
+docs/design/**
