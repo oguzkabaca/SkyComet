@@ -14,6 +14,81 @@
   padding: 12px 20px 0;
 }
 
+.passScope {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 20px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+
+.intentConflict {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 20px 0;
+  padding: 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--r-md);
+  background: var(--bg-inset);
+}
+
+.intentConflict > div:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.intentConflict strong {
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.intentConflict span {
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.intentConflictActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.passScope > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.passScope strong {
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.passScope span {
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.passScopeExpired {
+  border-color: var(--warn);
+  background: var(--bg-inset);
+}
+
 /* --- Main: narrow sky view (left) | wide live-card grid (right) ----------- */
 .main {
   flex: 1 0 auto;
@@ -107,5 +182,16 @@
   .visual {
     min-height: 320px;
     justify-content: center;
+  }
+
+  .passScope {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .intentConflict,
+  .intentConflictActions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

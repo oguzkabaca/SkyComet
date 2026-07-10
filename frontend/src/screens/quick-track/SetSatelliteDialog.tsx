@@ -7,6 +7,11 @@ import {
   type SatelliteSummary,
   type VisibleSatellite,
 } from '../../lib/ipc/commands';
+import {
+  createPassContext,
+  samePassContext,
+  type PassContextV1,
+} from '../../lib/operationContext';
 import { formatCountdown, type PlannedPass } from '../../lib/passPlan';
 import { fmtBand, isTrackable, profileName, type RFSelection } from './rf';
 import styles from './SetSatelliteDialog.module.css';
@@ -32,9 +37,16 @@ interface Props {
   /** Current saved target, seeding the draft when the dialog opens. */
   initialSat: SatelliteSummary | null;
   initialRf: RFSelection;
+  /** Exact pass scope, when the target came from a planned-pass row. */
+  initialPass: PassContextV1 | null;
   onCancel: () => void;
   /** Persist the draft as the new target. */
-  onSave: (sat: SatelliteSummary, rf: RFSelection, frequencies: FrequencyRecord[]) => void;
+  onSave: (
+    sat: SatelliteSummary,
+    rf: RFSelection,
+    frequencies: FrequencyRecord[],
+    passContext: PassContextV1 | null,
+  ) => void;
   /** Clear the saved target (the draft resets too; the dialog stays open). */
   onReset: () => void;
 }
@@ -65,6 +77,7 @@ export function SetSatelliteDialog({
   onRemovePlanned,
   initialSat,
   initialRf,
+  initialPass,
   onCancel,
   onSave,
   onReset,
@@ -75,6 +88,7 @@ export function SetSatelliteDialog({
   const [query, setQuery] = useState('');
   const [draftSat, setDraftSat] = useState<SatelliteSummary | null>(initialSat);
   const [draftRf, setDraftRf] = useState<RFSelection>(initialRf);
+  const [draftPass, setDraftPass] = useState<PassContextV1 | null>(initialPass);
   // Keyed by norad so a stale frequency list never shows for another satellite.
   const [fetched, setFetched] = useState<{ norad: number; freqs: FrequencyRecord[] } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -143,22 +157,25 @@ export function SetSatelliteDialog({
     [plan, query],
   );
 
-  function pickSat(sat: SatelliteSummary) {
-    if (sat.norad_id === draftNorad) return;
+  function pickSat(sat: SatelliteSummary, nextPass: PassContextV1 | null = null) {
+    if (sat.norad_id === draftNorad && samePassContext(nextPass, draftPass)) return;
     setDraftSat(sat);
+    setDraftPass(nextPass);
+    if (sat.norad_id === draftNorad) return;
     setDraftRf({ kind: 'none' });
   }
 
   function handleReset() {
     setDraftSat(null);
     setDraftRf({ kind: 'none' });
+    setDraftPass(null);
     setFetched(null);
     onReset();
   }
 
   function renderRow(sat: SatelliteSummary, meta: string) {
     const fav = favorites.has(sat.norad_id);
-    const on = sat.norad_id === draftNorad;
+    const on = sat.norad_id === draftNorad && draftPass === null;
     return (
       <li key={sat.norad_id}>
         <div className={on ? `${styles.row} ${styles.rowOn}` : styles.row}>
@@ -182,7 +199,9 @@ export function SetSatelliteDialog({
 
   // A planned row features the countdown to its pass; × unqueues it.
   function renderPlanRow(entry: PlannedPass) {
-    const on = entry.norad === draftNorad;
+    const sat = { norad_id: entry.norad, name: entry.name };
+    const context = createPassContext(sat, entry.pass, 'pass-plan');
+    const on = samePassContext(draftPass, context);
     const countdown = formatCountdown(entry.pass.aos, entry.pass.los, nowMs);
     return (
       <li key={`${entry.norad}-${entry.pass.aos}`}>
@@ -190,7 +209,7 @@ export function SetSatelliteDialog({
           <button
             type="button"
             className={styles.rowMain}
-            onClick={() => pickSat({ norad_id: entry.norad, name: entry.name })}
+            onClick={() => pickSat(sat, context)}
           >
             <span className={styles.rowName}>{entry.name}</span>
             <span className={styles.rowMeta}>
@@ -201,7 +220,10 @@ export function SetSatelliteDialog({
             type="button"
             className={styles.star}
             aria-label="Remove from pass plan"
-            onClick={() => onRemovePlanned(entry.norad, entry.pass.aos)}
+            onClick={() => {
+              if (on) setDraftPass(null);
+              onRemovePlanned(entry.norad, entry.pass.aos);
+            }}
           >
             ×
           </button>
@@ -358,7 +380,7 @@ export function SetSatelliteDialog({
           <Button
             variant="primary"
             disabled={draftSat === null || rfLoading}
-            onClick={() => draftSat && onSave(draftSat, draftRf, frequencies)}
+            onClick={() => draftSat && onSave(draftSat, draftRf, frequencies, draftPass)}
           >
             {saveLabel}
           </Button>

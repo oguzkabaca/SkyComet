@@ -389,6 +389,8 @@ export interface LinkBudget {
   noradId: number;
   freqTxHz: number;
   mode: string;
+  /** Geometry timestamp used for this budget (canonical UTC from the backend). */
+  analysisTime: string;
   rangeKm: number;
   elevationDeg: number;
   pRxDbm: number;
@@ -425,6 +427,7 @@ export async function getLinkBudget(
   mode?: string,
   satTxPowerW?: number,
   satTxGainDbi?: number,
+  at?: string,
 ): Promise<LinkBudget> {
   return invoke<LinkBudget>('get_link_budget', {
     norad,
@@ -432,6 +435,7 @@ export async function getLinkBudget(
     mode: mode ?? null,
     satTxPowerW: satTxPowerW ?? null,
     satTxGainDbi: satTxGainDbi ?? null,
+    analysisTime: at ?? null,
   });
 }
 

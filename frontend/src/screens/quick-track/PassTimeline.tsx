@@ -5,6 +5,8 @@ import styles from './PassTimeline.module.css';
 
 interface Props {
   norad: number | null;
+  /** Exact planned pass. When present, never auto-roll to another pass. */
+  pass?: Pass | null;
 }
 
 /** Refetch cadence — rolls to the next pass after LOS and tracks TLE refreshes. */
@@ -25,12 +27,12 @@ function mmss(totalSec: number): string {
  * and remaining time. Previews the next pass before tracking; becomes a live
  * progress bar during it.
  */
-export function PassTimeline({ norad }: Props) {
+export function PassTimeline({ norad, pass: exactPass = null }: Props) {
   const [result, setResult] = useState<{ norad: number; pass: Pass | null } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    if (norad === null) return;
+    if (norad === null || exactPass !== null) return;
     let cancelled = false;
     const load = () => {
       listPasses(norad)
@@ -49,14 +51,14 @@ export function PassTimeline({ norad }: Props) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [norad]);
+  }, [exactPass, norad]);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  const pass = result && result.norad === norad ? result.pass : null;
+  const pass = exactPass ?? (result && result.norad === norad ? result.pass : null);
   if (norad === null || !pass) return null;
 
   const aos = new Date(pass.aos).getTime();

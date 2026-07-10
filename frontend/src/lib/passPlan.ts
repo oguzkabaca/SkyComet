@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { type Pass } from './ipc/commands';
+import { isPass, passKey } from './operationContext';
 
 const STORAGE_KEY = 'skycomet.passPlan';
 
@@ -16,11 +17,7 @@ function isPlannedPass(value: unknown): value is PlannedPass {
   if (typeof value !== 'object' || value === null) return false;
   const e = value as Record<string, unknown>;
   if (typeof e.norad !== 'number' || typeof e.name !== 'string') return false;
-  if (typeof e.pass !== 'object' || e.pass === null) return false;
-  const p = e.pass as Record<string, unknown>;
-  return (
-    typeof p.aos === 'string' && typeof p.los === 'string' && typeof p.maxElevationDeg === 'number'
-  );
+  return isPass(e.pass) && passKey(e.norad, e.pass.aos) !== null;
 }
 
 /**
@@ -53,7 +50,8 @@ function writePlan(entries: PlannedPass[]): void {
 }
 
 export function isPlanned(entries: PlannedPass[], norad: number, aos: string): boolean {
-  return entries.some((e) => e.norad === norad && e.pass.aos === aos);
+  const key = passKey(norad, aos);
+  return key !== null && entries.some((e) => passKey(e.norad, e.pass.aos) === key);
 }
 
 /**
@@ -67,7 +65,7 @@ export function usePassPlan() {
   const add = useCallback((entry: PlannedPass) => {
     setPlan(() => {
       const next = readPlan().filter(
-        (e) => !(e.norad === entry.norad && e.pass.aos === entry.pass.aos),
+        (e) => passKey(e.norad, e.pass.aos) !== passKey(entry.norad, entry.pass.aos),
       );
       next.push(entry);
       next.sort((a, b) => a.pass.aos.localeCompare(b.pass.aos));
@@ -78,7 +76,8 @@ export function usePassPlan() {
 
   const remove = useCallback((norad: number, aos: string) => {
     setPlan(() => {
-      const next = readPlan().filter((e) => !(e.norad === norad && e.pass.aos === aos));
+      const key = passKey(norad, aos);
+      const next = readPlan().filter((e) => passKey(e.norad, e.pass.aos) !== key);
       writePlan(next);
       return next;
     });

@@ -3,15 +3,15 @@
 //! Two commands:
 //! - `get_doppler_curve` — SGP4 propagation across the pass window + range_km +
 //!   range_rate via numeric differentiation, then `core::analysis::doppler::doppler_shift_hz`.
-//! - `get_link_budget` — instantaneous range at `now` + frequency + operator profile
-//!   through `core::analysis::link_budget::compute_downlink`.
+//! - `get_link_budget` — instantaneous range at an optional analysis time + frequency +
+//!   operator profile through `core::analysis::link_budget::compute_downlink`.
 //!
 //! Required SNR (per mode) comes from the `MODE_REQUIRED_SNR_DB` table;
 //! unknown modes fall back to `DEFAULT_REQUIRED_SNR_DB` (10 dB, FM equivalent).
 
 use std::sync::Arc;
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Serialize;
 use tauri::State;
 
@@ -74,6 +74,7 @@ pub struct LinkBudgetDto {
     pub norad_id: u32,
     pub freq_tx_hz: f64,
     pub mode: String,
+    pub analysis_time: String,
     pub range_km: f64,
     pub elevation_deg: f64,
     pub p_rx_dbm: f64,
@@ -86,6 +87,16 @@ pub struct LinkBudgetDto {
     pub off_axis_loss_db: f64,
     pub g_rx_effective_dbi: f64,
     pub required_snr_db: f64,
+}
+
+#[derive(Debug, Clone)]
+struct LinkBudgetRequest {
+    norad: u32,
+    freq_tx_hz: f64,
+    mode: Option<String>,
+    sat_tx_power_w: Option<f64>,
+    sat_tx_gain_dbi: Option<f64>,
+    analysis_time: DateTime<Utc>,
 }
 
 fn map_err<E: std::fmt::Display>(code: &str, err: E) -> CommandError {
@@ -102,6 +113,26 @@ fn parse_rfc3339(s: &str, field: &str) -> Result<DateTime<Utc>, CommandError> {
             code: "invalid_datetime".into(),
             message: format!("{field}: {e}"),
         })
+}
+
+fn resolve_analysis_time(
+    analysis_time: Option<&str>,
+    default_time: DateTime<Utc>,
+) -> Result<DateTime<Utc>, CommandError> {
+    match analysis_time {
+        Some(raw) => parse_rfc3339(raw, "analysis_time"),
+        None => Ok(default_time),
+    }
+}
+
+fn validate_frequency(freq_tx_hz: f64) -> Result<(), CommandError> {
+    if !freq_tx_hz.is_finite() || freq_tx_hz <= 0.0 {
+        return Err(CommandError {
+            code: "invalid_frequency".into(),
+            message: "freq_tx_hz must be positive".into(),
+        });
+    }
+    Ok(())
 }
 
 /// Compute the doppler curve across a pass window.
@@ -210,9 +241,10 @@ pub fn get_doppler_curve(
 }
 
 /// Compute the instantaneous link budget for `norad` at `freq_tx_hz`.
-/// Uses current operator profile (antenna + radio) and the satellite's
-/// present position (now). Off-axis is taken as 0° (boresight pointed at
-/// satellite — F8 rotor tracking will refine this).
+/// Uses the current operator profile (antenna + radio) and the satellite's
+/// position at `analysis_time`; omitting it preserves the previous `now`
+/// behavior. Off-axis is taken as 0° (boresight pointed at the satellite).
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn get_link_budget(
     db: State<'_, Database>,
@@ -222,46 +254,61 @@ pub fn get_link_budget(
     mode: Option<String>,
     sat_tx_power_w: Option<f64>,
     sat_tx_gain_dbi: Option<f64>,
+    analysis_time: Option<String>,
 ) -> Result<LinkBudgetDto, CommandError> {
-    if !freq_tx_hz.is_finite() || freq_tx_hz <= 0.0 {
-        return Err(CommandError {
-            code: "invalid_frequency".into(),
-            message: "freq_tx_hz must be positive".into(),
-        });
-    }
-    let observer = location::load_location(db.inner())
+    validate_frequency(freq_tx_hz)?;
+    let resolved_time = resolve_analysis_time(analysis_time.as_deref(), Utc::now())?;
+    compute_link_budget_at(
+        db.inner(),
+        cache.inner(),
+        LinkBudgetRequest {
+            norad,
+            freq_tx_hz,
+            mode,
+            sat_tx_power_w,
+            sat_tx_gain_dbi,
+            analysis_time: resolved_time,
+        },
+    )
+}
+
+fn compute_link_budget_at(
+    db: &Database,
+    cache: &TleCache,
+    request: LinkBudgetRequest,
+) -> Result<LinkBudgetDto, CommandError> {
+    let observer = location::load_location(db)
         .map_err(|e| map_err("location_error", e))?
         .ok_or_else(|| CommandError {
             code: "no_location".into(),
             message: "no location configured".into(),
         })?;
     let record = cache
-        .get_or_load(db.inner(), norad)
+        .get_or_load(db, request.norad)
         .map_err(|e| map_err("tle_error", e))?
         .ok_or_else(|| CommandError {
             code: "tle_not_found".into(),
-            message: format!("no TLE for norad {norad}"),
+            message: format!("no TLE for norad {}", request.norad),
         })?;
     let propagator = Propagator::from_tle(&record).map_err(|e| map_err("orbit_error", e))?;
-    let now = Utc::now();
     let state = propagator
-        .propagate_at(now)
+        .propagate_at(request.analysis_time)
         .map_err(|e| map_err("orbit_error", e))?;
-    let azer =
-        teme_to_az_el(state.position_km, now, &observer).map_err(|e| map_err("orbit_error", e))?;
+    let azer = teme_to_az_el(state.position_km, request.analysis_time, &observer)
+        .map_err(|e| map_err("orbit_error", e))?;
 
-    let profile = op_profile::load_or_seed(db.inner()).map_err(|e| map_err("profile_error", e))?;
-    let mode_str = mode.unwrap_or_else(|| "FM".to_string());
+    let profile = op_profile::load_or_seed(db).map_err(|e| map_err("profile_error", e))?;
+    let mode_str = request.mode.unwrap_or_else(|| "FM".to_string());
     let required_snr_db = required_snr_for_mode(&mode_str);
-    let tx_power = sat_tx_power_w.unwrap_or(DEFAULT_SAT_TX_POWER_W);
-    let tx_gain = sat_tx_gain_dbi.unwrap_or(DEFAULT_SAT_TX_GAIN_DBI);
+    let tx_power = request.sat_tx_power_w.unwrap_or(DEFAULT_SAT_TX_POWER_W);
+    let tx_gain = request.sat_tx_gain_dbi.unwrap_or(DEFAULT_SAT_TX_GAIN_DBI);
 
     // Satellite polarization: profile metadata doesn't carry it per-record yet;
     // assume circular (LHCP) — typical for amateur/CubeSat downlinks. UI may
     // surface this assumption.
     let satellite_pol = crate::core::antenna::profile::Polarization::Lhcp;
 
-    let freq_mhz = freq_tx_hz / 1.0e6;
+    let freq_mhz = request.freq_tx_hz / 1.0e6;
     let inputs = DownlinkInputs {
         tx_power_w: tx_power,
         tx_gain_dbi: tx_gain,
@@ -282,9 +329,12 @@ pub fn get_link_budget(
     let eirp_dbm = loss_models_eirp(tx_power, tx_gain);
 
     Ok(LinkBudgetDto {
-        norad_id: norad,
-        freq_tx_hz,
+        norad_id: request.norad,
+        freq_tx_hz: request.freq_tx_hz,
         mode: mode_str,
+        analysis_time: request
+            .analysis_time
+            .to_rfc3339_opts(SecondsFormat::AutoSi, true),
         range_km: azer.range_km,
         elevation_deg: azer.elevation_deg,
         p_rx_dbm: result.p_rx_dbm,
@@ -303,4 +353,85 @@ pub fn get_link_budget(
 fn loss_models_eirp(tx_power_w: f64, tx_gain_dbi: f64) -> f64 {
     // P_dBm = 10·log10(P_w · 1000); + G_tx
     link_budget::power_w_to_dbm(tx_power_w).unwrap_or(f64::NAN) + tx_gain_dbi
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::location::Location;
+    use crate::core::tle::{parser::parse_tle, repo};
+
+    const ISS_NAME: &str = "ISS (ZARYA)";
+    const ISS_L1: &str = "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9997";
+    const ISS_L2: &str = "2 25544  51.6400 247.4627 0006703 130.5360 325.0288 15.50000000123458";
+    const ANALYSIS_TIME: &str = "2024-01-01T12:00:00Z";
+    const TEST_FREQ_HZ: f64 = 437_800_000.0;
+    const FLOAT_TOLERANCE: f64 = 1.0e-9;
+
+    fn seeded_context() -> (Database, TleCache) {
+        let db = Database::open_in_memory().unwrap();
+        let observer = Location::new(41.0082, 28.9784, 35.0).unwrap();
+        location::save_location(&db, &observer).unwrap();
+        let record = parse_tle(ISS_NAME, ISS_L1, ISS_L2).unwrap();
+        repo::upsert(&db, &record, "test").unwrap();
+        (db, TleCache::new())
+    }
+
+    fn request_at(analysis_time: DateTime<Utc>) -> LinkBudgetRequest {
+        LinkBudgetRequest {
+            norad: 25_544,
+            freq_tx_hz: TEST_FREQ_HZ,
+            mode: Some("FM".to_string()),
+            sat_tx_power_w: None,
+            sat_tx_gain_dbi: None,
+            analysis_time,
+        }
+    }
+
+    #[test]
+    fn explicit_analysis_time_produces_deterministic_geometry() {
+        let (db, cache) = seeded_context();
+        let fallback = Utc::now();
+        let analysis_time = resolve_analysis_time(Some(ANALYSIS_TIME), fallback).unwrap();
+
+        let first = compute_link_budget_at(&db, &cache, request_at(analysis_time)).unwrap();
+        let second = compute_link_budget_at(&db, &cache, request_at(analysis_time)).unwrap();
+        let later = compute_link_budget_at(
+            &db,
+            &cache,
+            request_at(analysis_time + Duration::minutes(1)),
+        )
+        .unwrap();
+
+        assert_eq!(first.analysis_time, ANALYSIS_TIME);
+        assert!((first.range_km - second.range_km).abs() <= FLOAT_TOLERANCE);
+        assert!((first.elevation_deg - second.elevation_deg).abs() <= FLOAT_TOLERANCE);
+        assert!(
+            (first.range_km - later.range_km).abs() > FLOAT_TOLERANCE
+                || (first.elevation_deg - later.elevation_deg).abs() > FLOAT_TOLERANCE
+        );
+        assert!(first.range_km.is_finite() && first.range_km > 0.0);
+        assert!(first.elevation_deg.is_finite());
+    }
+
+    #[test]
+    fn malformed_analysis_time_is_rejected() {
+        let err = resolve_analysis_time(Some("not-rfc3339"), Utc::now()).unwrap_err();
+
+        assert_eq!(err.code, "invalid_datetime");
+        assert!(err.message.starts_with("analysis_time:"));
+    }
+
+    #[test]
+    fn missing_analysis_time_uses_default_time() {
+        let (db, cache) = seeded_context();
+        let default_time = parse_rfc3339(ANALYSIS_TIME, "test_time").unwrap();
+        let analysis_time = resolve_analysis_time(None, default_time).unwrap();
+
+        let result = compute_link_budget_at(&db, &cache, request_at(analysis_time)).unwrap();
+
+        assert_eq!(analysis_time, default_time);
+        assert_eq!(result.analysis_time, ANALYSIS_TIME);
+        assert!(result.range_km.is_finite() && result.range_km > 0.0);
+    }
 }

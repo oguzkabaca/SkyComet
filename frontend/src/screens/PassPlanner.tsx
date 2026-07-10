@@ -12,6 +12,11 @@ import {
   type Pass,
   type SatelliteSchedule,
 } from '../lib/ipc/commands';
+import {
+  createOperationIntent,
+  createPassContext,
+  type OperationIntentV1,
+} from '../lib/operationContext';
 import { PassScheduleChart, type SchedulePassRef } from '../viz/PassScheduleChart';
 import { PassDetailPanel } from './pass-planner/PassDetailPanel';
 import styles from './PassPlanner.module.css';
@@ -74,7 +79,11 @@ interface LaterRow {
  * window; the rest collapse into a "later" summary. The single-satellite
  * deep dive lives in the detail panel (select a bar or a later row).
  */
-export function PassPlanner() {
+interface Props {
+  onOpenOperation: (intent: OperationIntentV1) => void;
+}
+
+export function PassPlanner({ onOpenOperation }: Props) {
   const [view, setView] = useState<ViewChoice>('6');
   const [quality, setQuality] = useState<QualityChoice>('good');
   const [query, setQuery] = useState('');
@@ -303,6 +312,30 @@ export function PassPlanner() {
                 key={`${selected.noradId}-${selected.pass.aos}`}
                 sel={selected}
                 onClose={() => setSelected(null)}
+                onOpenRfPlanner={() =>
+                  onOpenOperation(
+                    createOperationIntent(
+                      'rf-planner',
+                      createPassContext(
+                        { norad_id: selected.noradId, name: selected.name },
+                        selected.pass,
+                        'pass-planner',
+                      ),
+                    ),
+                  )
+                }
+                onShowQuickTrack={() =>
+                  onOpenOperation(
+                    createOperationIntent(
+                      'quick-track',
+                      createPassContext(
+                        { norad_id: selected.noradId, name: selected.name },
+                        selected.pass,
+                        'pass-planner',
+                      ),
+                    ),
+                  )
+                }
               />
             </aside>
           )}

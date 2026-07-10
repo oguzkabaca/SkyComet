@@ -67,6 +67,8 @@ function compassFromAz(az: number): string {
 interface Props {
   sel: SchedulePassRef;
   onClose: () => void;
+  onOpenRfPlanner: () => void;
+  onShowQuickTrack: () => void;
 }
 
 /**
@@ -75,7 +77,12 @@ interface Props {
  * to the timeline. The parent keys this component by the selected pass
  * (fresh-mount pattern), so state starts clean per selection.
  */
-export function PassDetailPanel({ sel, onClose }: Props) {
+export function PassDetailPanel({
+  sel,
+  onClose,
+  onOpenRfPlanner,
+  onShowQuickTrack,
+}: Props) {
   const [track, setTrack] = useState<PassSample[] | null>(null);
   const [feas, setFeas] = useState<PassFeasibility | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -182,7 +189,14 @@ export function PassDetailPanel({ sel, onClose }: Props) {
           </div>
         </dl>
 
-      {/* Queue the pass for the Quick Track picker's "Pass plan" tab. */}
+      <div className={styles.handoffActions}>
+        <Button variant="primary" onClick={onOpenRfPlanner}>
+          Open in RF Planner
+        </Button>
+        <Button onClick={onShowQuickTrack}>Show in Quick Track</Button>
+      </div>
+
+      {/* Queue the pass for either screen's shared "Pass plan" picker tab. */}
       <div className={styles.planAction}>
         {planned ? (
           <Button onClick={() => remove(sel.noradId, p.aos)}>Remove from pass plan</Button>

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import { SegmentedControl } from '../../components/SegmentedControl';
-import { getPassTrack, listPasses, type PassSample } from '../../lib/ipc/commands';
+import { getPassTrack, listPasses, type Pass, type PassSample } from '../../lib/ipc/commands';
 import type { PassPhase, TrackingSnapshot } from '../../lib/ipc/events';
+import { passKey } from '../../lib/operationContext';
 import { PolarPlot } from '../../viz/PolarPlot';
 import styles from './TrackingVisual.module.css';
 
@@ -30,6 +31,8 @@ interface LookAngle {
 
 interface Props {
   norad: number | null;
+  /** Exact planned pass. When present, never draw another pass as fallback. */
+  pass?: Pass | null;
   snapshot: TrackingSnapshot | null;
   rotorActual?: LookAngle | null;
   rotorTarget?: LookAngle | null;
@@ -40,9 +43,20 @@ interface Props {
  * live satellite marker and rotor actual/target; the ground map is a separate
  * full-width section below. Compact live AZ/EL sits above the plot.
  */
-export function TrackingVisual({ norad, snapshot, rotorActual, rotorTarget }: Props) {
-  // Pass track for the plot, keyed by norad (no synchronous setState).
-  const [track, setTrack] = useState<{ norad: number; samples: PassSample[] } | null>(null);
+export function TrackingVisual({
+  norad,
+  pass: exactPass = null,
+  snapshot,
+  rotorActual,
+  rotorTarget,
+}: Props) {
+  const trackKey =
+    norad === null
+      ? null
+      : exactPass
+        ? (passKey(norad, exactPass.aos) ?? `exact:${norad}:${exactPass.aos}`)
+        : `auto:${norad}`;
+  const [track, setTrack] = useState<{ key: string; samples: PassSample[] } | null>(null);
   // Projection convention (canon §5.7), persisted across sessions.
   const [view, setView] = useState<PolarView>(readView);
 
@@ -51,20 +65,29 @@ export function TrackingVisual({ norad, snapshot, rotorActual, rotorTarget }: Pr
   }, [view]);
 
   useEffect(() => {
-    if (norad === null) return;
+    if (norad === null || trackKey === null) return;
     let cancelled = false;
     const load = () => {
-      listPasses(norad)
-        .then(async (passes) => {
-          const p = passes[0];
-          const samples = p ? await getPassTrack(norad, p) : [];
-          if (!cancelled) setTrack({ norad, samples });
+      const samplesPromise = exactPass
+        ? getPassTrack(norad, exactPass)
+        : listPasses(norad).then((passes) => {
+            const pass = passes[0];
+            return pass ? getPassTrack(norad, pass) : [];
+          });
+      samplesPromise
+        .then((samples) => {
+          if (!cancelled) setTrack({ key: trackKey, samples });
         })
         .catch(() => {
-          if (!cancelled) setTrack({ norad, samples: [] });
+          if (!cancelled) setTrack({ key: trackKey, samples: [] });
         });
     };
     load();
+    if (exactPass !== null) {
+      return () => {
+        cancelled = true;
+      };
+    }
     // Periodic refetch: the drawn trace otherwise froze on the first-fetched
     // pass and never rolled over after LOS.
     const id = setInterval(load, TRACK_REFRESH_MS);
@@ -72,9 +95,9 @@ export function TrackingVisual({ norad, snapshot, rotorActual, rotorTarget }: Pr
       cancelled = true;
       clearInterval(id);
     };
-  }, [norad]);
+  }, [exactPass, norad, trackKey]);
 
-  const samples = track && track.norad === norad ? track.samples : [];
+  const samples = track && track.key === trackKey ? track.samples : [];
   const live = snapshot
     ? { azimuthDeg: snapshot.azimuth_deg, elevationDeg: snapshot.elevation_deg }
     : null;

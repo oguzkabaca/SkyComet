@@ -205,11 +205,15 @@
   flex-direction: column;
 }
 
-.readyTarget > span:last-child {
+.readyNorad {
   margin-top: 5px;
   color: var(--fg-dim);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+.readyTarget > span + span {
+  margin-top: 8px;
 }
 
 .readySummary {
