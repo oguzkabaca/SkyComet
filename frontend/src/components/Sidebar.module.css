@@ -9,41 +9,9 @@
   overflow: hidden;
 }
 
-.sideSearch {
-  padding: 14px 14px 8px;
-}
-.input {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  height: 36px;
-  padding: 0 12px;
-  background: var(--bg-inset);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
-  color: var(--fg-dim);
-  font-size: 13px;
-}
-.input svg {
-  color: var(--fg-faint);
-  flex-shrink: 0;
-}
-.ph {
-  flex: 1;
-}
-.kbd {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--fg-dim);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 1px 6px;
-}
-
 .sideNav {
   flex: 1;
-  padding: 6px 10px 10px;
+  padding: 10px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;

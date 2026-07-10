@@ -66,17 +66,6 @@ export function Sidebar({ active, onNavigate }: Props) {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.sideSearch}>
-        <div className={styles.input}>
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <circle cx="7" cy="7" r="4.5" />
-            <path d="M10.5 10.5 L14 14" />
-          </svg>
-          <span className={styles.ph}>Search satellite or screen</span>
-          <kbd className={styles.kbd}>Ctrl K</kbd>
-        </div>
-      </div>
-
       <nav className={styles.sideNav}>
         {NAV_GROUPS.map((group) => {
           const isCollapsed = collapsed[group.title] ?? false;
