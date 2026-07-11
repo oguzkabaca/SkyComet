@@ -425,3 +425,65 @@
 .form > .actions > button {
   width: 136px;
 }
+
+/* --- Updates --------------------------------------------------------------- */
+
+.updates {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 560px;
+}
+
+.updatesRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-inset);
+}
+
+.updatesRow > button,
+.updatesFound > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.updatesLabel {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.updatesVersion {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.updatesFound {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.updatesDate {
+  color: var(--fg-muted);
+}
+
+.updatesNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}

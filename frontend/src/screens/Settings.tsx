@@ -1,4 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+
+import { getVersion } from '@tauri-apps/api/app';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { check, type Update } from '@tauri-apps/plugin-updater';
 
 import { Button } from '../components/Button';
 import { Field } from '../components/Field';
@@ -34,7 +38,7 @@ type Status =
   | { kind: 'saved'; at: number }
   | { kind: 'error'; message: string };
 
-type SectionId = 'theme' | 'location' | 'profile' | 'rotor';
+type SectionId = 'theme' | 'location' | 'profile' | 'rotor' | 'updates';
 
 const SECTIONS: { id: SectionId; label: string; title: string; sub: string }[] = [
   {
@@ -60,6 +64,12 @@ const SECTIONS: { id: SectionId; label: string; title: string; sub: string }[] =
     label: 'Rotor',
     title: 'Rotor profile',
     sub: 'Rotor capabilities used by pass feasibility and the operator brief.',
+  },
+  {
+    id: 'updates',
+    label: 'Updates',
+    title: 'Application updates',
+    sub: 'Check GitHub Releases for a newer SkyComet build and install it in place.',
   },
 ];
 
@@ -133,6 +143,7 @@ export function Settings() {
           {active === 'location' && <LocationForm />}
           {active === 'profile' && <ProfileForm />}
           {active === 'rotor' && <RotorForm />}
+          {active === 'updates' && <UpdatesSection />}
         </div>
       </ScreenPanel>
     </ScreenFrame>
@@ -938,5 +949,140 @@ function RotorForm() {
       </div>
       <FormStatus status={status} />
     </form>
+  );
+}
+
+// --- Updates -----------------------------------------------------------------
+
+type UpdateState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'current' }
+  | { kind: 'available'; version: string; date: string | null }
+  | { kind: 'downloading'; received: number; total: number | null }
+  | { kind: 'ready' }
+  | { kind: 'error'; message: string };
+
+/**
+ * Self-update (ADR 0014 D4). Checks are strictly user-initiated: a check hits
+ * the GitHub Releases updater endpoint, install downloads the signed NSIS
+ * artifact, and the restart relaunches into the new build. A failed check
+ * (offline, or a dev build without the updater) degrades to an inline error.
+ */
+function UpdatesSection() {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [state, setState] = useState<UpdateState>({ kind: 'idle' });
+  const updateRef = useRef<Update | null>(null);
+
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(null));
+  }, []);
+
+  async function handleCheck() {
+    setState({ kind: 'checking' });
+    try {
+      const update = await check();
+      if (update) {
+        updateRef.current = update;
+        setState({ kind: 'available', version: update.version, date: update.date ?? null });
+      } else {
+        updateRef.current = null;
+        setState({ kind: 'current' });
+      }
+    } catch (err: unknown) {
+      setState({ kind: 'error', message: errorMessage(err) });
+    }
+  }
+
+  async function handleInstall() {
+    const update = updateRef.current;
+    if (!update) return;
+    setState({ kind: 'downloading', received: 0, total: null });
+    try {
+      let received = 0;
+      let total: number | null = null;
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          total = event.data.contentLength ?? null;
+          setState({ kind: 'downloading', received: 0, total });
+        } else if (event.event === 'Progress') {
+          received += event.data.chunkLength;
+          setState({ kind: 'downloading', received, total });
+        } else if (event.event === 'Finished') {
+          setState({ kind: 'ready' });
+        }
+      });
+      setState({ kind: 'ready' });
+    } catch (err: unknown) {
+      setState({ kind: 'error', message: errorMessage(err) });
+    }
+  }
+
+  async function handleRestart() {
+    try {
+      await relaunch();
+    } catch (err: unknown) {
+      setState({ kind: 'error', message: errorMessage(err) });
+    }
+  }
+
+  const busy = state.kind === 'checking' || state.kind === 'downloading';
+
+  return (
+    <div className={styles.updates}>
+      <div className={styles.updatesRow}>
+        <div>
+          <div className={styles.updatesLabel}>Installed version</div>
+          <div className={styles.updatesVersion}>{appVersion ?? '—'}</div>
+        </div>
+        <Button variant="primary" onClick={() => void handleCheck()} disabled={busy}>
+          {state.kind === 'checking' ? 'Checking…' : 'Check for updates'}
+        </Button>
+      </div>
+
+      {state.kind === 'current' && <StatusLine>SkyComet is up to date.</StatusLine>}
+      {state.kind === 'error' && (
+        <StatusLine tone="error">Update check failed: {state.message}</StatusLine>
+      )}
+
+      {state.kind === 'available' && (
+        <div className={styles.updatesFound}>
+          <div>
+            <strong>Version {state.version} is available.</strong>
+            {state.date && <span className={styles.updatesDate}> Published {state.date}.</span>}
+          </div>
+          <Button variant="primary" onClick={() => void handleInstall()}>
+            Download and install
+          </Button>
+        </div>
+      )}
+
+      {state.kind === 'downloading' && (
+        <StatusLine>
+          Downloading…{' '}
+          {state.total !== null
+            ? `${Math.round((state.received / state.total) * 100)}%`
+            : `${Math.round(state.received / 1024)} KiB`}
+        </StatusLine>
+      )}
+
+      {state.kind === 'ready' && (
+        <div className={styles.updatesFound}>
+          <div>
+            <strong>Update installed.</strong> Restart SkyComet to finish.
+          </div>
+          <Button variant="primary" onClick={() => void handleRestart()}>
+            Restart now
+          </Button>
+        </div>
+      )}
+
+      <p className={styles.updatesNote}>
+        Updates are fetched from GitHub Releases and verified against the SkyComet signing key
+        before install. Nothing is checked automatically — only when you press the button.
+      </p>
+    </div>
   );
 }

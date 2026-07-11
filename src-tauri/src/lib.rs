@@ -22,6 +22,10 @@ pub fn run() {
     init_tracing();
 
     if let Err(e) = tauri::Builder::default()
+        // Self-update (ADR 0014 D4): checks are user-initiated from Settings;
+        // no background polling. `process` provides the relaunch after install.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().ok();
             let db_path = db::resolve_db_path(app_data_dir).map_err(|e| {

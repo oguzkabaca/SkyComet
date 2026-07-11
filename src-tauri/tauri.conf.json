@@ -32,6 +32,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "resources": [
       "resources/catalog-snapshot.json"
     ],
@@ -42,5 +43,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg2MTdCMkY5NDQxN0U4OTcKUldTWDZCZEUrYklYaHJtS2lqQStqck85aHFKYUJQMGp6RkNuZlVQdzlVeTR5bUR4VTJ0bW5uV3gK",
+      "endpoints": [
+        "https://github.com/oguzkabaca/SkyComet/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

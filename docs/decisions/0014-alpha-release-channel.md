@@ -65,8 +65,12 @@ signed updates in place:
   `cargo tauri signer generate`. The **public key** lives in `tauri.conf.json`; the
   **private key never enters the repository** — it is stored as the
   `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret (and a local operator backup).
-- Update checks are **user-initiated or on-startup notification only**; no background
-  polling loop (offline-first principle unchanged — a failed check degrades silently).
+- Update checks are **user-initiated only** (Settings → Updates); no background polling
+  loop (offline-first principle unchanged — a failed check degrades to an inline error).
+- GitHub Releases are **not** flagged as prereleases even on the alpha channel: the
+  updater feed reads `releases/latest/download/latest.json`, and GitHub's `latest`
+  endpoint skips prerelease-flagged releases. The SemVer prerelease identifier in the
+  version string remains the channel marker.
 
 ### D5 — Release automation on tag push
 
