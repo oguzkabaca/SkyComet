@@ -1,0 +1,60 @@
+name: Security audit
+
+# Dependency vulnerability audit (RustSec + npm advisories). Runs when a
+# lockfile changes and on a weekly schedule, because new advisories are
+# published against existing dependencies without any commit happening.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/Cargo.toml'
+      - 'frontend/package-lock.json'
+      - 'frontend/package.json'
+      - '.github/workflows/audit.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/Cargo.toml'
+      - 'frontend/package-lock.json'
+      - 'frontend/package.json'
+      - '.github/workflows/audit.yml'
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    name: cargo audit (RustSec)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@2ca9b94c269419b7b0c711c09d0b21c4e1d51145 # v2
+        with:
+          tool: cargo-audit
+
+      - name: cargo audit
+        run: cargo audit
+        working-directory: src-tauri
+
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+
+      # npm audit resolves advisories from the lockfile alone; no install needed.
+      - name: npm audit (high and above)
+        run: npm audit --audit-level=high
+        working-directory: frontend
