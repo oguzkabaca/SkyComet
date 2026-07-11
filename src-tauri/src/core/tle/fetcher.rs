@@ -6,6 +6,9 @@ use super::{TleError, TleRecord};
 const CELESTRAK_BASE: &str = "https://celestrak.org/NORAD/elements/gp.php";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const USER_AGENT: &str = concat!("skycomet/", env!("CARGO_PKG_VERSION"));
+/// Response-size guard (calc §10): each CelesTrak group file is well under
+/// 200 KiB of three-line elements; anything bigger is a misbehaving endpoint.
+const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 /// Product default (`docs/calculations.md` §7.6): the Catalog, satellite
 /// pickers (Quick Track / RF Planner / Satellite Passes) and Pass Planner's
@@ -80,10 +83,23 @@ pub async fn fetch_url(url: &str) -> Result<FetchOutcome, TleError> {
             response.status()
         )));
     }
+    if let Some(len) = response.content_length() {
+        if len > MAX_RESPONSE_BYTES as u64 {
+            return Err(TleError::Network(format!(
+                "response too large: {len} bytes"
+            )));
+        }
+    }
     let body = response
         .text()
         .await
         .map_err(|e| TleError::Network(format!("read body: {e}")))?;
+    if body.len() > MAX_RESPONSE_BYTES {
+        return Err(TleError::Network(format!(
+            "response too large: {} bytes",
+            body.len()
+        )));
+    }
 
     let parsed = parse_three_line_set(&body);
     let mut records = Vec::with_capacity(parsed.len());

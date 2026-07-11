@@ -20,6 +20,12 @@ const USER_AGENT: &str = concat!("skycomet/", env!("CARGO_PKG_VERSION"));
 const BACKOFF_BASE_MS: u64 = 1_000;
 const BACKOFF_MAX_RETRIES: u32 = 5;
 
+/// Response-size guard (calc §10): the full dumps measure ~5 MB combined
+/// (verified 2026-05-27); anything bigger by an order of magnitude is a
+/// misbehaving endpoint, not catalog growth. Oversize is permanent — a retry
+/// would download the same payload again.
+const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+
 #[derive(Debug, Clone)]
 pub struct CatalogFetch {
     pub satellites: Vec<SatelliteRecord>,
@@ -96,10 +102,23 @@ async fn try_fetch<T: for<'de> Deserialize<'de>>(
     };
     let status = response.status();
     if status.is_success() {
+        if let Some(len) = response.content_length() {
+            if len > MAX_RESPONSE_BYTES as u64 {
+                return Err(FetchAttempt::Permanent(CatalogError::Network(format!(
+                    "response too large: {len} bytes"
+                ))));
+            }
+        }
         let text = response
             .text()
             .await
             .map_err(|e| FetchAttempt::Retryable(format!("read body: {e}")))?;
+        if text.len() > MAX_RESPONSE_BYTES {
+            return Err(FetchAttempt::Permanent(CatalogError::Network(format!(
+                "response too large: {} bytes",
+                text.len()
+            ))));
+        }
         let body = serde_json::from_str::<T>(&text)
             .map_err(|e| FetchAttempt::Permanent(CatalogError::Parse(e.to_string())))?;
         return Ok(body);

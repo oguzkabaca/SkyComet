@@ -84,6 +84,17 @@ pub enum SeedOutcome {
     },
 }
 
+/// Cheap pre-check for startup: whether the bundled snapshot needs to be
+/// parsed at all. Two `COUNT` queries instead of parsing ~2 MB of JSON on
+/// every launch once the DB is populated (2026-07-04 audit item).
+/// `seed_if_empty` re-checks per table, so calling it without this check
+/// stays correct — this only skips the parse.
+pub fn needs_seed(db: &Database) -> Result<bool, CatalogError> {
+    let catalog_empty = super::repo::count_satellites(db)? == 0;
+    let tle_empty = tle::repo::count(db).map_err(tle_to_catalog_err)? == 0;
+    Ok(catalog_empty || tle_empty)
+}
+
 /// Seed the catalog tables from `snapshot`. Each table is checked
 /// independently — a DB that already has `satellites` but an empty
 /// `satellites_tle` (e.g. upgraded from a v1 snapshot install) still gets
@@ -376,5 +387,21 @@ mod tests {
             }
         ));
         assert_eq!(tle::repo::count(&db).unwrap(), 1);
+    }
+
+    #[test]
+    fn needs_seed_tracks_table_population() {
+        let db = fresh_db();
+        // Empty DB → the bundle must be parsed and seeded.
+        assert!(needs_seed(&db).unwrap());
+
+        let snap = parse_bytes(&mini_snapshot_bytes()).unwrap();
+        // Catalog present but TLE empty (v1-era install) → still needs it.
+        super::super::repo::upsert_satellites(&db, &snap.satellites).unwrap();
+        assert!(needs_seed(&db).unwrap());
+
+        // Fully seeded → startup can skip the parse entirely.
+        seed_if_empty(&db, &snap).unwrap();
+        assert!(!needs_seed(&db).unwrap());
     }
 }

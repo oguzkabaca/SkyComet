@@ -242,6 +242,18 @@ fn resolve_snapshot_path(handle: &tauri::AppHandle) -> Option<std::path::PathBuf
 }
 
 fn seed_catalog_from_bundle(handle: &tauri::AppHandle, db: &Database) {
+    // Skip the ~2 MB JSON parse entirely once the DB is populated (2026-07-04
+    // audit). On a check error, fall through — seed_if_empty re-checks.
+    match catalog_snapshot::needs_seed(db) {
+        Ok(false) => {
+            tracing::debug!("catalog snapshot: DB already populated, seed skipped");
+            return;
+        }
+        Ok(true) => {}
+        Err(e) => {
+            tracing::warn!(error = %e, "catalog snapshot: emptiness pre-check failed");
+        }
+    }
     let path = match resolve_snapshot_path(handle) {
         Some(p) => p,
         None => {

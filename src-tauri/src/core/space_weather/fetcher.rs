@@ -11,6 +11,9 @@ const NOAA_SCALES_URL: &str = "https://services.swpc.noaa.gov/products/noaa-scal
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const USER_AGENT: &str = concat!("skycomet/", env!("CARGO_PKG_VERSION"));
 const SOURCE: &str = "noaa-swpc";
+/// Response-size guard (calc §10): both SWPC products are small JSON arrays
+/// (tens of KiB); anything bigger is a misbehaving endpoint.
+const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpaceWeatherFetch {
@@ -48,10 +51,23 @@ async fn fetch_json<T: for<'de> Deserialize<'de>>(
             "http {status} for {url}"
         )));
     }
+    if let Some(len) = response.content_length() {
+        if len > MAX_RESPONSE_BYTES as u64 {
+            return Err(SpaceWeatherError::Network(format!(
+                "response too large for {url}: {len} bytes"
+            )));
+        }
+    }
     let text = response
         .text()
         .await
         .map_err(|e| SpaceWeatherError::Network(format!("read body {url}: {e}")))?;
+    if text.len() > MAX_RESPONSE_BYTES {
+        return Err(SpaceWeatherError::Network(format!(
+            "response too large for {url}: {} bytes",
+            text.len()
+        )));
+    }
     serde_json::from_str::<T>(&text).map_err(|e| SpaceWeatherError::Parse(e.to_string()))
 }
 

@@ -1088,6 +1088,20 @@ Rules:
 **Status:** active (2026-07-05, settings-redesign sprint). `core/location/detect.rs` parser is
 fixture-tested (success / provider-reject / missing field / out-of-range / malformed).
 
+### 10.1 Response-size guards (all fetchers)
+
+Every network fetcher bounds the response body with a named `MAX_RESPONSE_BYTES` constant
+(2026-07-04 audit closure, applied 2026-07-11). The guard checks `Content-Length` before the
+body read and the actual text length after it; oversize is a network error, never a partial
+parse. Caps are an order of magnitude above the observed payloads:
+
+| Constant | Value | Where | Observed payload |
+|---|---|---|---|
+| `MAX_RESPONSE_BYTES` | 64 KiB | `core/location/detect.rs` | ≈ 1 KB JSON |
+| `MAX_RESPONSE_BYTES` | 2 MiB | `core/tle/fetcher.rs` | < 200 KiB per CelesTrak group |
+| `MAX_RESPONSE_BYTES` | 1 MiB | `core/space_weather/fetcher.rs` | tens of KiB per SWPC product |
+| `MAX_RESPONSE_BYTES` | 32 MiB | `core/satellite/satnogs.rs` | ~5 MB combined dumps (2026-05-27); oversize is a permanent (non-retryable) error |
+
 ---
 
 ## 11. Observer site geometry
@@ -1234,6 +1248,10 @@ invariants asserted by the `core/tracking.rs` unit tests (not a single fabricate
 
 ## Change history
 
+- 2026-07-11 — Alpha release hardening (ADR 0014, 2026-07-04 audit closure): §10.1 added —
+  named `MAX_RESPONSE_BYTES` guards on the TLE (2 MiB), space-weather (1 MiB) and SatNOGS
+  (32 MiB) fetchers, matching the existing location-detect pattern. Startup snapshot seeding
+  now pre-checks table population (`snapshot::needs_seed`) before parsing the bundled JSON.
 - 2026-07-11 — Amateur-only default extended + multi-group source bug fixed: `tle::repo::list_summaries`
   gained `amateur_only`, threaded through `visible_satellites`/`sky_schedule` and the
   `list_satellites`/`list_visible_satellites`/`list_all_passes` commands — Quick Track, RF Planner,
