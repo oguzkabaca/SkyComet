@@ -44,8 +44,9 @@ workflow in one place and answers the question that matters at the station:
 - **Catalog and map** — browse more than 2,700 satellites, inspect radio profiles and follow
   ground tracks on an offline-capable world map.
 - **Space weather** — bring NOAA/SWPC geomagnetic risk into the same decision surface as the pass.
-- **Rotor operations** — configure generic Az-El, Az-only or El-only profiles; analyze slew,
-  flip and pre-position feasibility; control GS-232-compatible hardware over serial.
+- **Rotor operations** — configure generic Az-El, Az-only or El-only profiles and analyze slew,
+  flip and pre-position feasibility. (GS-232 serial hardware control ships disabled in the alpha
+  channel pending physical verification.)
 - **Operator Brief** — combine pass geometry, RF margin, space weather and rotor feasibility
   into one readiness score.
 
@@ -74,6 +75,17 @@ refreshes satellite metadata, TLE data and space weather when a connection is av
 6. **Track** — start software tracking or enable rotor-assisted tracking when hardware is ready.
 
 No API key or `.env` file is required for the core pass-planning, RF and tracking workflow.
+
+## Download
+
+The current release channel is **alpha** (see [CHANGELOG.md](CHANGELOG.md)). Grab the Windows
+NSIS installer from the
+[latest GitHub Release](https://github.com/oguzkabaca/SkyComet/releases/latest); installed apps
+check the same Releases feed for signed self-updates.
+
+> **Alpha channel note:** physical rotor control (serial GS-232) is disabled in alpha builds
+> until it has been verified against real hardware. Rotor *analysis* — Operator Brief, pass
+> feasibility and rotor profiles — works fully; only the hardware-drive surface is gated off.
 
 ## What makes it different
 
@@ -113,19 +125,19 @@ actively refined through live Windows/WebView2 testing.
 
 | Area | Current evidence | Status |
 |---|---|---|
-| Automated behavior | 269 unit tests + 2 integration tests | Verified in CI |
+| Automated behavior | 280 unit tests + 2 integration tests | Verified in CI |
 | Numeric models | Canonical sanity values and regression tests | Verified |
 | Windows/WebView2 | Continuous development and live operator review | Verified |
 | macOS and Linux | No maintained build or manual validation yet | Unverified |
-| Physical GS-232 rotor | Mock-transport and protocol tests only | Experimental |
+| Physical GS-232 rotor | Mock-transport and protocol tests only | Disabled in alpha builds |
 
 Formulas, constants, tolerances and sanity values are documented in
 [the calculation canon](docs/calculations.md).
 
 ## Build the development preview
 
-Published installers are not yet the primary distribution path. To run SkyComet from source on
-Windows, install:
+Prefer the [installer](#download) unless you are changing the code. To run SkyComet from source
+on Windows, install:
 
 - [Rust](https://www.rust-lang.org/tools/install) **1.95.0**
 - [Node.js](https://nodejs.org/) **22.12.0** and npm
@@ -239,8 +251,9 @@ missed ticks instead of accumulating delayed updates.
 The numbered implementation phases are complete and SkyComet now evolves through focused product
 sprints. Current priorities are:
 
-- validate GS-232 control with a physical Yaesu G-5500-class rotator;
-- publish repeatable Windows release artifacts and installation guidance;
+- validate GS-232 control with a physical Yaesu G-5500-class rotator and re-enable it in
+  release builds;
+- iterate the alpha release channel toward a stable 0.1.0;
 - expand custom RF-profile and generic rotor-profile editing;
 - continue operational UI refinement from live pass workflows;
 - evaluate macOS and Linux only after the Windows release path is stable.
@@ -254,7 +267,7 @@ re-evaluated only when their operational or hardware trigger becomes real.
 |---|---|
 | No satellites or passes appear | Set a station location, connect once and run Catalog sync to refresh TLE data. |
 | RF plan cannot be computed | Choose an RF profile or enter a valid custom downlink frequency. |
-| Rotor controls remain unavailable | Configure a rotor profile, verify the serial port and reconnect the device. |
+| Rotor controls remain unavailable | Physical rotor control is disabled in alpha builds (see [Download](#download)); rotor analysis still works. |
 | `cargo tauri` is not recognized | Install Tauri CLI v2 with `cargo install tauri-cli --version "^2"`. |
 | Frontend build rejects Node.js | Use the version pinned in `.nvmrc`—currently Node.js 22.12.0. |
 
