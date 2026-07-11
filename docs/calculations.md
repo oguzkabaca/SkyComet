@@ -209,6 +209,8 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 | `schedule_hours_max` | 48 | hour | All-sky schedule window clamp (§5.9): the batch scans every TLE-backed satellite (~350), so its budget is tighter than the single-satellite command. |
 | `schedule_min_max_el` | 10 | degree | §5.9 default max-elevation floor. Numerically equal to `marginal_threshold` (§5.6) by design: passes peaking below it are "poor" and, at ~350 satellites, flood the timeline (1500+ passes / 24 h). Semantically a UI filter default, not a classification band. |
 | `pass_lookback_minutes` | 30 | min | `list_passes` sliding window (§5.2 note): scan starts this far before "now" so an in-progress pass keeps its real AOS; covers LEO/MEO pass durations. |
+| `pass_duration_max_hours` | 24 | hour | Cap for caller-supplied AOS→LOS windows (`get_pass_track`, doppler curve, rotor brief/feasibility — 2026-07-04 audit follow-up): these commands sample the whole window and IPC arguments are untrusted. Longest real HEO passes run a few hours; a reversed window is rejected too (`los > aos`). |
+| `feasibility_max_passes` | 200 | — | Upper bound on caller-supplied passes per `list_pass_feasibility` request; each pass costs a full track sampling, and a 7-day LEO window tops out around ~110 passes. |
 | `score_duration_saturate` | 600 | s | No extra points above 10 min — fair to a short pass vs an overhead pass. |
 | `score_norm_denominator` | 8100 | — | 90² = 8100 for max_el²; normalizes the score to [0, 1]. |
 | `overhead_threshold` | 70 | degree | An "overhead pass" amateur convention. |
@@ -1252,6 +1254,11 @@ invariants asserted by the `core/tracking.rs` unit tests (not a single fabricate
   named `MAX_RESPONSE_BYTES` guards on the TLE (2 MiB), space-weather (1 MiB) and SatNOGS
   (32 MiB) fetchers, matching the existing location-detect pattern. Startup snapshot seeding
   now pre-checks table population (`snapshot::needs_seed`) before parsing the bundled JSON.
+- 2026-07-11 — Alpha.1 security pass: §5.1 gained `pass_duration_max_hours` (24 h) and
+  `feasibility_max_passes` (200) — caller-supplied pass windows (`get_pass_track`,
+  `get_doppler_curve`, rotor brief/feasibility) and the feasibility batch size are now clamped at
+  the IPC boundary via a shared `validate_pass_window` guard (2026-07-04 audit follow-up; no
+  orbital math changed).
 - 2026-07-11 — Amateur-only default extended + multi-group source bug fixed: `tle::repo::list_summaries`
   gained `amateur_only`, threaded through `visible_satellites`/`sky_schedule` and the
   `list_satellites`/`list_visible_satellites`/`list_all_passes` commands — Quick Track, RF Planner,

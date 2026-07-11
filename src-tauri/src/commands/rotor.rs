@@ -35,6 +35,11 @@ const DEFAULT_REQUIRED_SNR_DB: f64 = 10.0;
 /// Default satellite TX assumptions (sub-watt CubeSat downlink), calc §6.6.
 const DEFAULT_SAT_TX_POWER_W: f64 = 1.0;
 const DEFAULT_SAT_TX_GAIN_DBI: f64 = 0.0;
+/// Upper bound on caller-supplied passes per feasibility request (calc §5.1
+/// `feasibility_max_passes`): each pass costs a full track sampling, and a
+/// 7-day LEO window tops out around ~110 passes, so a compliant client never
+/// gets close.
+const MAX_PASSES_PER_REQUEST: usize = 200;
 
 fn map_err<E: std::fmt::Display>(code: &str, err: E) -> CommandError {
     CommandError {
@@ -79,6 +84,7 @@ impl PassRef {
         let aos = parse_rfc3339(&self.aos, "aos")?;
         let tca = parse_rfc3339(&self.tca, "tca")?;
         let los = parse_rfc3339(&self.los, "los")?;
+        super::passes::validate_pass_window(aos, los)?;
         Ok(Pass {
             aos,
             tca,
@@ -196,6 +202,12 @@ pub fn list_pass_feasibility(
     };
     if passes.is_empty() {
         return Ok(Vec::new());
+    }
+    if passes.len() > MAX_PASSES_PER_REQUEST {
+        return Err(CommandError {
+            code: "too_many_passes".into(),
+            message: format!("at most {MAX_PASSES_PER_REQUEST} passes per request"),
+        });
     }
     let (observer, propagator) = load_observer_propagator(db.inner(), cache.inner(), norad)?;
     let mut out = Vec::with_capacity(passes.len());

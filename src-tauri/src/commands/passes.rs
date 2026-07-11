@@ -163,6 +163,7 @@ pub fn get_pass_track(
     let aos_dt = parse_rfc3339(&aos, "aos")?;
     let tca_dt = parse_rfc3339(&tca, "tca")?;
     let los_dt = parse_rfc3339(&los, "los")?;
+    validate_pass_window(aos_dt, los_dt)?;
     // Reconstruct a minimal Pass — only AOS / LOS are needed for sampling.
     let stub = Pass {
         aos: aos_dt,
@@ -244,4 +245,65 @@ fn parse_rfc3339(s: &str, field: &str) -> Result<DateTime<Utc>, CommandError> {
             code: "invalid_datetime".into(),
             message: format!("{field}: {e}"),
         })
+}
+
+/// Shared guard for caller-supplied pass windows (canon §5.1
+/// `pass_duration_max_hours`). Sampling commands walk the whole AOS→LOS
+/// window, and IPC arguments are untrusted — reject a reversed or absurdly
+/// long window before any propagation work. Consumers: `get_pass_track`,
+/// `get_doppler_curve` and the rotor brief/feasibility commands.
+pub(super) fn validate_pass_window(
+    aos: DateTime<Utc>,
+    los: DateTime<Utc>,
+) -> Result<(), CommandError> {
+    if los <= aos {
+        return Err(CommandError {
+            code: "invalid_window".into(),
+            message: "los must be after aos".into(),
+        });
+    }
+    if los - aos > Duration::hours(pp_params::PASS_DURATION_MAX_HOURS) {
+        return Err(CommandError {
+            code: "invalid_window".into(),
+            message: format!(
+                "pass window exceeds {} hours",
+                pp_params::PASS_DURATION_MAX_HOURS
+            ),
+        });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn t(s: &str) -> DateTime<Utc> {
+        parse_rfc3339(s, "test").unwrap()
+    }
+
+    #[test]
+    fn pass_window_accepts_a_normal_pass() {
+        let aos = t("2026-07-11T10:00:00Z");
+        let los = t("2026-07-11T10:12:00Z");
+        assert!(validate_pass_window(aos, los).is_ok());
+    }
+
+    #[test]
+    fn pass_window_rejects_reversed_or_zero_length() {
+        let aos = t("2026-07-11T10:00:00Z");
+        let err = validate_pass_window(aos, aos).unwrap_err();
+        assert_eq!(err.code, "invalid_window");
+        let err = validate_pass_window(aos, t("2026-07-11T09:00:00Z")).unwrap_err();
+        assert_eq!(err.code, "invalid_window");
+    }
+
+    #[test]
+    fn pass_window_rejects_oversized_duration() {
+        let aos = t("2026-07-11T10:00:00Z");
+        let at_cap = aos + Duration::hours(pp_params::PASS_DURATION_MAX_HOURS);
+        assert!(validate_pass_window(aos, at_cap).is_ok());
+        let err = validate_pass_window(aos, at_cap + Duration::seconds(1)).unwrap_err();
+        assert_eq!(err.code, "invalid_window");
+    }
 }

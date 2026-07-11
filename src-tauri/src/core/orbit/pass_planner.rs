@@ -45,6 +45,12 @@ pub mod params {
     /// LEO/MEO pass durations; a satellite above the horizon longer than this
     /// (e.g. GEO) still has no AOS in the window and stays dropped.
     pub const PASS_LOOKBACK_MINUTES: i64 = 30;
+    /// Cap for caller-supplied AOS→LOS windows (§5.1 `pass_duration_max_hours`).
+    /// `get_pass_track`, the doppler curve and the rotor brief sample the whole
+    /// window, and IPC arguments are untrusted — a reversed or multi-year
+    /// window is a client bug, not a reason for unbounded propagation. The
+    /// longest real HEO passes run a few hours; 24 h is generous.
+    pub const PASS_DURATION_MAX_HOURS: i64 = 24;
     /// Duration above which the score's duration factor saturates at 1.0.
     pub const SCORE_DURATION_SATURATE_SEC: f64 = 600.0;
     /// 90° × 90°; normalizes the elevation-squared term to [0, 1].

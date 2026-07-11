@@ -168,12 +168,7 @@ pub fn get_doppler_curve(
     let propagator = Propagator::from_tle(&record).map_err(|e| map_err("orbit_error", e))?;
     let aos_dt = parse_rfc3339(&aos, "aos")?;
     let los_dt = parse_rfc3339(&los, "los")?;
-    if los_dt <= aos_dt {
-        return Err(CommandError {
-            code: "invalid_window".into(),
-            message: "los must be after aos".into(),
-        });
-    }
+    super::passes::validate_pass_window(aos_dt, los_dt)?;
     let n = samples
         .unwrap_or(DOPPLER_DEFAULT_SAMPLES)
         .clamp(DOPPLER_MIN_SAMPLES, DOPPLER_MAX_SAMPLES);
