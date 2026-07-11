@@ -78,4 +78,4 @@ The enum dispatch becomes a trait if any of the following occurs:
 
 - [ADR 0004](0004-satnogs-as-catalog-source.md) — source choice
 - [ADR 0006](0006-embedded-catalog-snapshot.md) — first launch without a sync
-- `docs/02-roadmap.md` §F5, §F7
+- Development roadmap, phases F5 and F7 (archived)

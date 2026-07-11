@@ -773,7 +773,7 @@ operator overrides them via Settings → Profile.
     the bundled seed. **Residual risk:** if a future CelesTrak group is added to `ALL` *after*
     `Amateur`, this invariant breaks silently — `amateur_group_is_synced_last` (fetcher.rs) is a unit
     test, not a compile-time guard. A satellite↔group many-to-many table would remove the ordering
-    dependency entirely; deferred as **B-017** (`docs/backlog.md`) since the reorder fixes the
+    dependency entirely; deferred (tracked internally as **B-017**) since the reorder fixes the
     practical symptom today.
 - **Added:** F5. **Status:** active. **Amateur-only default:** 2026-07-11, sprint mode.
 
@@ -1201,7 +1201,7 @@ propagation model is introduced. Code: `core/tracking.rs::snapshot_from_parts`.
 - **Sign:** `ṙ > 0` receding (range growing), `ṙ < 0` approaching — the **same convention as the §6.2
   Doppler shift**, so live Doppler reuses `doppler_shift_hz` directly.
 - **Tolerance:** numeric differentiation; adequate for a display read-out (sub-Hz Doppler error at
-  UHF). Analytical SGP4 range-rate deferred (knowledge/orbit.md TODO), matching the §6 Doppler curve.
+  UHF). Analytical SGP4 range-rate is deferred, matching the §6 Doppler curve.
 - **Source:** finite-difference derivative; same method as §6 Doppler curve.
 - **Added:** Sprint 2026-07 (Quick Track). **Status:** active.
 

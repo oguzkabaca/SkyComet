@@ -86,4 +86,4 @@ A release cadence of weekly-to-monthly makes a once-a-week refresh more than eno
 
 - [ADR 0004](0004-satnogs-as-catalog-source.md) — source choice
 - [ADR 0005](0005-sync-api-shape.md) — sync façade
-- `docs/02-roadmap.md` §F5
+- Development roadmap, phase F5 (archived)

@@ -12,7 +12,8 @@ was made to fully optimize the existing UI **for the F0–7 screens** according 
 language. The goal: a consistent, modular, and **revision-resilient** UI foundation on which the
 F8+ screens would be built.
 
-**Settled visual canon:** `docs/design/ui-shell-v2-calm.html` ("SkyComet UI Shell v2 — Calm"). A
+**Settled visual canon:** the "SkyComet UI Shell v2 — Calm" design mock (an internal HTML
+reference maintained in the local design workspace). A
 light "calm" theme, IBM Plex Sans/Mono + Instrument Serif fonts, a full token system
 (color/radius/shadow/font), a custom title bar, a grouped + searchable sidebar, and a
 card/segment/chip/tag component language.
@@ -126,8 +127,7 @@ screen, a live telemetry UI) are **hidden or kept as disabled placeholders**.
 
 **New:**
 - `docs/decisions/0008-ui-design-system.md` (this file)
-- `docs/design/ui-shell-v2-calm.html` (a copy of the visual canon)
-- `docs/design/ui-checklist.md` (a 6-screen × 3-theme QA matrix)
+- the visual-canon HTML mock and a 6-screen × 3-theme QA matrix (internal design workspace)
 - `frontend/src/styles/{tokens.css, base.css}`
 - `frontend/src/theme/{ThemeContext.ts, useTheme.ts, ThemeProvider.tsx}`
 - `frontend/src/components/*.{tsx, module.css}` (AppShell, TitleBar, Sidebar, Card,
@@ -147,7 +147,7 @@ screen, a live telemetry UI) are **hidden or kept as disabled placeholders**.
 
 - **Milestone discipline:** each milestone ends demonstrable (cargo test/fmt/clippy + npm
   lint/build green, an atomic commit). Visual changes are verified manually **in 3 themes**
-  (`docs/design/ui-checklist.md`).
+  against the QA matrix.
 
 ## Reversal condition
 
@@ -160,6 +160,5 @@ screen, a live telemetry UI) are **hidden or kept as disabled placeholders**.
 
 ## Related
 
-- `docs/design/ui-shell-v2-calm.html` — the visual canon (regression-guard source)
-- `docs/design/ui-checklist.md` — the screen × theme QA matrix
+- The "Shell v2 — Calm" visual-canon mock and screen × theme QA matrix (internal design workspace)
 - `docs/calculations.md` §5.7 (sky-view convention), §6.6 (link-margin threshold)

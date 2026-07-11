@@ -23,8 +23,8 @@ cd src-tauri
 cargo tauri icon icons/icon-source.png
 ```
 
-This also emits Android/iOS/MS-Store variants Skycomet doesn't ship (desktop
-`.exe` only, see AGENTS.md §1) — delete `icons/android/`, `icons/ios/`,
+This also emits Android/iOS/MS-Store variants SkyComet doesn't ship (the app
+is distributed as a desktop `.exe` only) — delete `icons/android/`, `icons/ios/`,
 `icons/Square*.png`, and `icons/StoreLogo.png` after running it.
 
 **Cargo build-script caching gotcha:** Tauri's Windows resource compiler

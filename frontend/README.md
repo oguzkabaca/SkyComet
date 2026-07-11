@@ -39,4 +39,4 @@ npm run build      # type-check + production bundle
 - One component per file to keep React Fast Refresh stable.
 
 See [../docs/decisions/0008-ui-design-system.md](../docs/decisions/0008-ui-design-system.md) for the
-design-system rationale and [../docs/design/](../docs/design/) for the visual canon.
+design-system rationale and the visual canon.

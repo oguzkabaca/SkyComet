@@ -59,4 +59,4 @@ None of the three currently hold.
 
 - [ADR 0005](0005-sync-api-shape.md) — sync façade
 - [ADR 0006](0006-embedded-catalog-snapshot.md) — bundled snapshot on first launch
-- `docs/02-roadmap.md` §F5
+- Development roadmap, phase F5 (archived)

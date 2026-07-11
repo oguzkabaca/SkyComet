@@ -33,7 +33,7 @@ and their formulas are recorded in `docs/calculations.md` §12 **in the same com
 When a rotor is connected, the tracking loop (`lib.rs`) drives it toward the live satellite az/el
 each tick, reusing the existing overlap-aware az-wrap / limit / deadband logic
 (`core/rotor/{kinematics,serial}.rs`). The driving is done **in the tracking layer**, not in
-`core/orbit/pass_planner.rs`, which stays pure geometry (knowledge/orbit.md invariant). New rotor
+`core/orbit/pass_planner.rs`, which stays pure geometry (a project invariant). New rotor
 IPC (`rotor_park`, `rotor_pause`, `rotor_resume`) complements the existing `rotor_stop` (E-Stop);
 rotor state (Idle / Slewing / Tracking / Locked) is derived from the actual↔target error, not a new
 device concept.
