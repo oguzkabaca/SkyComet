@@ -81,24 +81,12 @@ __pycache__/
 *.egg-info/
 .claude/
 
-# ===== Internal development notes (local only, never pushed) =====
+# ===== Local development workspace (local only, never pushed) =====
+# The whole agent/dev-notes layer lives in .dev/; AGENTS.md and CLAUDE.md stay
+# at the root as thin entry points for coding agents. None of it is published.
+.dev/
 AGENTS.md
 CLAUDE.md
-CURRENT.md
-JOURNAL.md
-CALISMA_GUNLUGU.md
-.sessions/
-agent-profiles/
-knowledge/
-docs/agents/
-docs/05-workflow.md
-docs/06-reporting.md
-docs/08-agent-handoff.md
-docs/backlog.md
-docs/reports/
-docs/archive/
-docs/decisions/0003-agent-memory-architecture.md
-docs/decisions/0007-multi-agent-conductor.md
-obsidian-vault/
 .obsidian/
-docs/design/**
+.agents/
+.codex/
