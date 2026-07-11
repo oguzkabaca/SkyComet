@@ -1,6 +1,9 @@
 pub mod commands;
 pub mod core;
 
+#[cfg(test)]
+mod release_config_tests;
+
 use std::sync::Arc;
 use std::time::Duration;
 
