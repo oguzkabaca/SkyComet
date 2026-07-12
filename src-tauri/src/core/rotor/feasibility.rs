@@ -33,6 +33,15 @@ pub const EL_REF_DEG: f64 = 60.0;
 pub const OFFAXIS_REF_DB: f64 = 6.0;
 /// Link-budget "comfortable" margin, dB (calc §6; mirrors the UI MARGIN_OK_DB).
 pub const MARGIN_OK_DB: f64 = 6.0;
+/// TLE age beyond which the brief target is untrustworthy and the §8.7
+/// fail-safe gate zeroes the score (calc §8.7). Sits above the softer
+/// thresholds: 24 h auto-sync (§7.1), 72 h UI stale warning.
+pub const TLE_EXPIRED_HOURS: f64 = 168.0;
+
+/// §8.7 gate input: whether a TLE of `age_hours` counts as expired.
+pub fn tle_expired(age_hours: f64) -> bool {
+    age_hours > TLE_EXPIRED_HOURS
+}
 
 /// Rotor trackability of a pass (calc §8.3). Worst axis decides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -387,5 +396,14 @@ mod tests {
         let mut i = good_inputs();
         i.tle_expired = true;
         assert_eq!(brief_score(&i), 0.0);
+    }
+
+    #[test]
+    fn tle_expired_boundary_at_168_hours() {
+        // Calc §8.7: strictly older than TLE_EXPIRED_HOURS trips the gate.
+        assert!(!tle_expired(0.0));
+        assert!(!tle_expired(167.9));
+        assert!(!tle_expired(TLE_EXPIRED_HOURS));
+        assert!(tle_expired(168.1));
     }
 }

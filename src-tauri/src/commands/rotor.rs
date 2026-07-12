@@ -30,11 +30,6 @@ use crate::core::rotor::profile::RotorProfile;
 use crate::core::space_weather::{repo as sw_repo, risk_model};
 use crate::core::tle::cache::TleCache;
 
-/// Default satellite downlink mode SNR floor (FM-equivalent, calc §6.6).
-const DEFAULT_REQUIRED_SNR_DB: f64 = 10.0;
-/// Default satellite TX assumptions (sub-watt CubeSat downlink), calc §6.6.
-const DEFAULT_SAT_TX_POWER_W: f64 = 1.0;
-const DEFAULT_SAT_TX_GAIN_DBI: f64 = 0.0;
 /// Upper bound on caller-supplied passes per feasibility request (calc §5.1
 /// `feasibility_max_passes`): each pass costs a full track sampling, and a
 /// 7-day LEO window tops out around ~110 passes, so a compliant client never
@@ -128,13 +123,15 @@ pub struct OperatorBriefDto {
     pub off_axis_loss_db: f64,
     pub risk_code: String,
     pub rotor_name: String,
+    /// §8.7 fail-safe gate: TLE older than `TLE_EXPIRED_HOURS` → score forced to 0.
+    pub tle_expired: bool,
 }
 
 fn load_observer_propagator(
     db: &Database,
     cache: &Arc<TleCache>,
     norad: u32,
-) -> Result<(location::Location, Propagator), CommandError> {
+) -> Result<(location::Location, Propagator, DateTime<Utc>), CommandError> {
     let observer = location::load_location(db)
         .map_err(|e| map_err("location_error", e))?
         .ok_or_else(|| CommandError {
@@ -149,7 +146,7 @@ fn load_observer_propagator(
             message: format!("no TLE for norad {norad}"),
         })?;
     let propagator = Propagator::from_tle(&record).map_err(|e| map_err("orbit_error", e))?;
-    Ok((observer, propagator))
+    Ok((observer, propagator, record.epoch))
 }
 
 /// Feasibility/flip/pre-position for one pass (no RF/wx — light, used by the
@@ -209,7 +206,8 @@ pub fn list_pass_feasibility(
             message: format!("at most {MAX_PASSES_PER_REQUEST} passes per request"),
         });
     }
-    let (observer, propagator) = load_observer_propagator(db.inner(), cache.inner(), norad)?;
+    let (observer, propagator, _epoch) =
+        load_observer_propagator(db.inner(), cache.inner(), norad)?;
     let mut out = Vec::with_capacity(passes.len());
     for pref in &passes {
         let pass = pref.to_pass()?;
@@ -240,23 +238,31 @@ pub fn get_operator_brief(
         code: "no_rotor_profile".into(),
         message: "no rotor profile configured (Settings → Rotor)".into(),
     })?;
-    let (observer, propagator) = load_observer_propagator(db.inner(), cache.inner(), norad)?;
+    let (observer, propagator, tle_epoch) =
+        load_observer_propagator(db.inner(), cache.inner(), norad)?;
     let pass = pass.to_pass()?;
 
     let (feas, flip, prep) = assess_pass(&propagator, &observer, &pass, &rotor)?;
 
+    let now = Utc::now();
+
+    // §8.7 fail-safe gate input: TLE age vs the canon expiry threshold.
+    let tle_age_hours = (now - tle_epoch).num_milliseconds() as f64 / 3_600_000.0;
+    let tle_expired = feasibility::tle_expired(tle_age_hours);
+
     // Space weather risk (latest snapshot; UI-safe even if none).
     let snapshot =
         sw_repo::latest_snapshot(db.inner()).map_err(|e| map_err("space_weather_error", e))?;
-    let risk = risk_model::assess(snapshot.as_ref(), Utc::now());
+    let risk = risk_model::assess(snapshot.as_ref(), now);
 
     // RF margin at TCA range, only when a downlink frequency is supplied.
     let (margin_db, off_axis_loss_db) = match freq_hz {
         Some(freq) if freq.is_finite() && freq > 0.0 => {
-            let required_snr_db = required_snr_for_mode(mode.as_deref().unwrap_or("FM"));
+            let required_snr_db =
+                link_budget::required_snr_for_mode(mode.as_deref().unwrap_or("FM"));
             let inputs = DownlinkInputs {
-                tx_power_w: DEFAULT_SAT_TX_POWER_W,
-                tx_gain_dbi: DEFAULT_SAT_TX_GAIN_DBI,
+                tx_power_w: link_budget::DEFAULT_SAT_TX_POWER_W,
+                tx_gain_dbi: link_budget::DEFAULT_SAT_TX_GAIN_DBI,
                 range_km: pass.tca_range_km,
                 freq_mhz: freq / 1.0e6,
                 feed_loss_tx_db: 0.0,
@@ -283,7 +289,7 @@ pub fn get_operator_brief(
         offaxis_loss_db: off_axis_loss_db,
         risk: risk.level,
         feasibility: feas,
-        tle_expired: false,
+        tle_expired,
     });
 
     Ok(OperatorBriefDto {
@@ -300,15 +306,6 @@ pub fn get_operator_brief(
         off_axis_loss_db,
         risk_code: risk.level.code().to_string(),
         rotor_name: rotor.name,
+        tle_expired,
     })
-}
-
-/// Required SNR by mode (calc §6.6 notes); FM-equivalent default.
-fn required_snr_for_mode(mode: &str) -> f64 {
-    match mode.to_ascii_uppercase().as_str() {
-        "FM" | "AFSK1K2" | "FSK" | "GMSK" => 10.0,
-        "SSB" | "USB" | "LSB" => 6.0,
-        "CW" => 3.0,
-        _ => DEFAULT_REQUIRED_SNR_DB,
-    }
 }

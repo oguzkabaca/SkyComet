@@ -11,6 +11,39 @@ use crate::core::antenna::profile::{AntennaProfile, Polarization};
 /// Thermal noise floor at `T_0 = 290 K`, 1 Hz, ref 1 mW (canon §2, §6.6).
 pub const THERMAL_NOISE_DBM_HZ: f64 = -174.0;
 
+// ---- Canon §6.6: required SNR by mode (single source for all commands) -----
+
+/// FM voice readability threshold (ARRL practice), canon §6.6.
+pub const REQUIRED_SNR_FM_DB: f64 = 10.0;
+/// AFSK 1k2 packet decode threshold, canon §6.6.
+pub const REQUIRED_SNR_AFSK1K2_DB: f64 = 8.0;
+/// SSB voice readability threshold, canon §6.6.
+pub const REQUIRED_SNR_SSB_DB: f64 = 6.0;
+/// CW copy threshold (narrow-band, by-ear), canon §6.6.
+pub const REQUIRED_SNR_CW_DB: f64 = 3.0;
+/// Unknown-mode fallback — FM-equivalent (canon §6.6).
+pub const DEFAULT_REQUIRED_SNR_DB: f64 = REQUIRED_SNR_FM_DB;
+
+/// Default satellite TX power when the frequency record does not list it —
+/// typical amateur/CubeSat downlink (canon §6.6). The IPC exposes the
+/// parameter so a caller can override.
+pub const DEFAULT_SAT_TX_POWER_W: f64 = 1.0;
+/// Default satellite TX antenna gain (omni assumption), canon §6.6.
+pub const DEFAULT_SAT_TX_GAIN_DBI: f64 = 0.0;
+
+/// Required SNR for a (normalized) transmitter mode string, canon §6.6.
+/// SatNOGS mode strings vary; matching is case-insensitive on the trimmed
+/// token. Unknown modes fall back to the FM-equivalent default.
+pub fn required_snr_for_mode(mode: &str) -> f64 {
+    match mode.trim().to_ascii_uppercase().as_str() {
+        "FM" | "FSK" | "GMSK" => REQUIRED_SNR_FM_DB,
+        "AFSK1K2" => REQUIRED_SNR_AFSK1K2_DB,
+        "SSB" | "USB" | "LSB" => REQUIRED_SNR_SSB_DB,
+        "CW" => REQUIRED_SNR_CW_DB,
+        _ => DEFAULT_REQUIRED_SNR_DB,
+    }
+}
+
 /// Downlink link-budget inputs (canon §6.6).
 #[derive(Debug, Clone)]
 pub struct DownlinkInputs {
@@ -158,6 +191,20 @@ mod tests {
             rx_noise_figure_db: 3.0,
             required_snr_db: 10.0,
         }
+    }
+
+    #[test]
+    fn required_snr_table_matches_canon() {
+        // Canon §6.6: FM/FSK/GMSK 10, AFSK1k2 8, SSB 6, CW 3, unknown → 10.
+        assert_eq!(required_snr_for_mode("FM"), REQUIRED_SNR_FM_DB);
+        assert_eq!(required_snr_for_mode("fm"), REQUIRED_SNR_FM_DB);
+        assert_eq!(required_snr_for_mode("GMSK"), REQUIRED_SNR_FM_DB);
+        assert_eq!(required_snr_for_mode("AFSK1k2"), REQUIRED_SNR_AFSK1K2_DB);
+        assert_eq!(required_snr_for_mode("SSB"), REQUIRED_SNR_SSB_DB);
+        assert_eq!(required_snr_for_mode("usb"), REQUIRED_SNR_SSB_DB);
+        assert_eq!(required_snr_for_mode("CW"), REQUIRED_SNR_CW_DB);
+        assert_eq!(required_snr_for_mode("SSTV"), DEFAULT_REQUIRED_SNR_DB);
+        assert_eq!(required_snr_for_mode(""), DEFAULT_REQUIRED_SNR_DB);
     }
 
     #[test]

@@ -16,14 +16,15 @@ pub const FSPL_CONSTANT_DB: f64 = 32.44;
 
 // ---- Canon §6.4: Polarization mismatch -------------------------------------
 
-/// Circular ↔ Linear loss (kesin = `10·log10(2)`), canon §6.4.
+/// Circular ↔ Linear loss (exact = `10·log10(2)`), canon §6.4.
 pub const CIRC_TO_LINEAR_LOSS_DB: f64 = 3.0103;
 
-/// Cross-circular practical isolation loss (ITU-R BO.652), canon §6.4.
+/// Cross-circular practical isolation loss, canon §6.4 (practical XPI band).
 pub const PRACTICAL_CROSS_POL_LOSS_DB: f64 = 20.0;
 
-/// Numeric cap for orthogonal linear-linear (Δθ = 90°), canon §6.4 notes.
-pub const ORTHOGONAL_LINEAR_CAP_DB: f64 = 30.0;
+/// Numeric cap for orthogonal linear-linear (Δθ = 90°), canon §6.4 —
+/// bounded in practice by receiver cross-polar isolation (~25 dB).
+pub const ORTHOGONAL_LINEAR_CAP_DB: f64 = 25.0;
 
 // ---- Canon §6.5: Off-axis Gaussian beam ------------------------------------
 
@@ -58,7 +59,7 @@ pub fn fspl_db(range_km: f64, freq_mhz: f64) -> Result<f64, AnalysisError> {
 /// Polarization mismatch loss in dB (positive = loss), canon §6.4.
 ///
 /// Same-pol → 0 dB. Cross-circular (LHCP↔RHCP) → 20 dB. Circular ↔ Linear →
-/// 3.0103 dB. Orthogonal linear (H↔V) → 30 dB cap (numerik tavan, ∞ yerine).
+/// 3.0103 dB. Orthogonal linear (H↔V) → 25 dB cap (numeric ceiling instead of ∞).
 pub fn polarization_mismatch_db(satellite: Polarization, antenna: Polarization) -> f64 {
     use Polarization::*;
     match (satellite, antenna) {

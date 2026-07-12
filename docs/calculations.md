@@ -107,6 +107,29 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 - **Verification:** ISS vs N2YO, difference < 0.5° (2026-05-27).
 - **Added:** F2. **Status:** active.
 
+### Julian date (Gregorian calendar → JD)
+
+- **Purpose:** convert a UTC civil date-time to the Julian Date the GMST formula consumes.
+- **Input:** UTC `DateTime` (Gregorian calendar).
+- **Output:** `jd` (day, continuous count since 4713 BC Jan 1.5).
+- **Formula (Meeus "Astronomical Algorithms" eq. 7.1, Gregorian branch):**
+  ```
+  if month ≤ 2: year -= 1, month += 12
+  A = floor(year / 100)
+  B = 2 - A + floor(A / 4)                    // Gregorian leap correction
+  jd0 = floor(365.25 · (year + 4716))
+      + floor(30.6001 · (month + 1))
+      + day + B - 1524.5
+  jd  = jd0 + (hour + minute/60 + second/3600) / 24
+  ```
+- **Constants:** `4716`, `30.6001`, `1524.5`, `B` — Meeus calendar-arithmetic constants; valid for
+  all Gregorian dates (every date this app sees is far past the 1582 switchover).
+- **Tolerance:** exact at the double-precision level for the century around J2000.
+- **Source:** Meeus, "Astronomical Algorithms" 2nd ed., eq. 7.1; equivalent to Vallado Algorithm 14.
+- **Verification:** unit test `julian_date_j2000_anchor` — 2000-01-01 12:00 UTC → 2 451 545.0.
+- **Code:** `core/orbit/coordinates.rs::julian_date`.
+- **Added:** F2 (backfilled into the canon 2026-07-12 audit). **Status:** active.
+
 ### GMST (Greenwich Mean Sidereal Time)
 
 - **Purpose:** convert UT1 to the TEME→ECEF rotation angle.
@@ -203,6 +226,7 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
 | `bisection_tolerance` | 1 | s | The target is "< 30 s difference vs Heavens-Above"; a 1 s internal tolerance is enough. |
 | `bisection_max_iter` | 50 | — | log2(86400) ≈ 17; a safety margin. |
 | `min_elevation_deg` | 0 | degree | Default is the true horizon; adjustable in the UI (5°–10° amateur practice). A terrain horizon profile is added in F8. |
+| `min_elevation_clamp` | [0, 89] | degree | IPC boundary clamp on caller-supplied `min_elevation_deg` (`commands/passes.rs`; canonized 2026-07-12 audit): 90°+ would make every pass empty and negative masks are meaningless. |
 | `polar_sample_step` | 5 | s | ~60–180 samples between AOS-LOS, a smooth SVG path. |
 | `hours_ahead_default` | 24 | hour | The roadmap "24h ≥ 4 passes" target. |
 | `hours_ahead_max` | 168 | hour | Input clamp for the single-satellite pass window (2026-07-04 audit item — `hours_ahead` was unbounded): the UI horizon field allows up to 7 days; anything larger is a client bug. |
@@ -285,6 +309,12 @@ code change. A retired formula is tagged (`> Status: removed (F-N)`) rather than
   - Newton: extra gradient computation, overshoot risk.
   - 30 s step + parabolic fit: residual error typically < 0.1 s (the elevation curve is smooth on LEO passes).
 - **Guard:** `denom ≈ 0` → fall back to the sample-max t_0.
+- **Implementation note (2026-07-12 audit):** the code (`pass_planner.rs::parabolic_peak_time`)
+  uses the **general 3-point quadratic Lagrange fit**, not the symmetric equal-spacing form above:
+  the bracketing samples are clipped to AOS/LOS, so the spacing can be unequal near the pass
+  edges. At equal spacing the two forms are algebraically identical. Extra guards beyond the
+  formula: a concave-up parabola (`a ≥ 0`) and a peak outside the `[t_-1, t_+1]` bracket also
+  fall back to the discrete sample max.
 - **Added:** F4. **Status:** active.
 
 ### 5.5 Pass score
@@ -411,7 +441,13 @@ operator overrides them via Settings → Profile.
   - At TCA `range_rate ≈ 0` → `delta_f ≈ 0` (S-curve zero crossing).
 - **Notes:**
   - Relativistic correction (the `γ` factor) is on the order of `v/c ≈ 2.3e-5`; the neglected error is ~0.2 Hz — well below tolerance.
-  - "Pre-doppler" (uplink): applied in the opposite direction on the TX side; a separate helper (`doppler::uplink_corrected_tx_hz`).
+  - "Pre-doppler" (uplink): applied in the opposite direction on the TX side. Implemented as the
+    frontend helper `correctedUplinkHz` (`frontend/src/screens/quick-track/doppler.ts`, the
+    documented TS mirror of this section); core has no uplink function (corrected 2026-07-12
+    audit — this note previously pointed at a nonexistent `doppler::uplink_corrected_tx_hz`).
+  - **Doppler curve sampling (IPC bounds, `commands/rf.rs`):** `DOPPLER_DEFAULT_SAMPLES = 121`
+    (a 10-min pass at ~5 s spacing), clamp `DOPPLER_MIN_SAMPLES = 16`,
+    `DOPPLER_MAX_SAMPLES = 1024` — caller-supplied `samples` is untrusted input.
 - **Added:** F6. **Status:** active.
 
 ### 6.3 FSPL (free space path loss)
@@ -477,28 +513,38 @@ operator overrides them via Settings → Profile.
 
   // (3) Circular vs Circular, opposite hand (LHCP ↔ RHCP):
   L_pol_dB ≈ 20 dB
-    (theoretically ∞; limited in practice by antenna axial ratio ~1-3 dB.
-     ITU-R BO.652 assumes 20 dB isolation on average.)
+    (theoretically ∞; limited in practice by antenna axial ratio ~1-3 dB,
+     giving a practical isolation band of ~20-25 dB. 20 dB is the conservative
+     end of that band.)
 
   // (4) Circular vs Linear (either direction):
   L_pol_dB = 3.0 dB   (exact; a circular field splits equally into two orthogonal
                         linear components → a linear antenna captures half → 10·log10(2) = 3.01 dB)
   ```
-- **Constants:**
-  - `POL_CIRC_TO_LIN_DB = 3.01` — derived `10·log10(2)`.
-  - `POL_CROSS_CIRC_DB = 20.0` — ITU-R BO.652 practical isolation.
-  - `POL_LINEAR_WORST_DB = 25.0` — the `delta_theta = 90°` gate (instead of numeric ∞).
+- **Constants (names = `core/analysis/loss_models.rs`, aligned 2026-07-12 audit):**
+  - `CIRC_TO_LINEAR_LOSS_DB = 3.0103` — derived `10·log10(2)`.
+  - `PRACTICAL_CROSS_POL_LOSS_DB = 20.0` — practical cross-CP isolation (axial-ratio band above).
+  - `ORTHOGONAL_LINEAR_CAP_DB = 25.0` — the `delta_theta = 90°` cap (receiver XPI bound,
+    instead of numeric ∞). *The code carried 30.0 until the 2026-07-12 audit; 25.0 is the
+    canon value and the code now matches.*
 - **Tolerance:** **±0.5 dB** (including axial-ratio tolerance).
-- **Source:** Balanis "Antenna Theory" §2.12; Stutzman & Thiele "Antenna Theory and Design" §4; ITU-R BO.652.
+- **Source:** Balanis "Antenna Theory" §2.12; Stutzman & Thiele "Antenna Theory and Design" §4.
+  (An earlier revision attributed the 20 dB figure to ITU-R BO.652; the attribution could not be
+  verified against the primary document in the 2026-07-12 literature check and was dropped —
+  the value itself is standard practice, e.g. ITU-R S-series XPI discussions use 20–25 dB.)
 - **Verification (sanity — roadmap §F6):**
   - ISS UHF (LHCP) ↔ operator linear yagi → **3.0 dB** ✓.
   - LHCP ↔ LHCP → 0 dB ✓.
   - LinearH ↔ LinearV (`Δθ = 90°`) → 25 dB (gated).
   - LinearH ↔ Linear@45° → `−20·log10(cos 45°) = 3.01 dB`.
 - **Notes:**
-  - For linear-vs-linear, `delta_theta` is often unknown (satellite spin/tumble); the F6 default with `delta_theta` `None` is a **3 dB average**. The UI shows this with an "estimated" badge.
+  - **Implemented subset (made explicit in the 2026-07-12 audit):** the polarization enum carries
+    only `LHCP / RHCP / LinearH / LinearV`, so the implementation covers the table's discrete
+    combinations (Δθ ∈ {0°, 90°} for linear-linear). The **arbitrary-Δθ formula (2)** and the
+    "`delta_theta` unknown → 3 dB average + 'estimated' badge" behavior are **forward-spec**;
+    they become implementable only when a Δθ input (or a satellite-attitude model) exists.
   - Faraday rotation (the ionosphere rotates linear polarization): noticeable at VHF (~30°–180°), ~10°–40° at UHF, negligible at L-band. Neglected in F6.
-- **Added:** F6. **Status:** active.
+- **Added:** F6. **Status:** active (combination table); formula (2) arbitrary Δθ: forward-spec.
 
 ### 6.5 Off-axis antenna gain
 
@@ -571,12 +617,29 @@ operator overrides them via Settings → Profile.
   SNR_dB    = P_rx_dBm − N_dBm
   margin_dB = SNR_dB − required_snr_db(mode)
 
-  // required_snr_db(mode):  FM voice ≥ 10 dB, SSB ≥ 6 dB, AFSK1k2 ≥ 8 dB.
-  // F6 initially hardcodes FM voice (10 dB); a mode table comes in F7+.
+  // required_snr_db(mode): see the mode table below.
   ```
+- **Required SNR by mode (single source: `core/analysis/link_budget.rs::required_snr_for_mode`,
+  consolidated 2026-07-12 audit — the table previously lived duplicated in `commands/rf.rs` and
+  `commands/rotor.rs`, with AFSK1k2 wrongly at 10 dB):**
+
+  | Mode token (case-insensitive) | Required SNR | Constant | Rationale |
+  |---|---|---|---|
+  | `FM`, `FSK`, `GMSK` | 10 dB | `REQUIRED_SNR_FM_DB` | amateur FM-voice readability (ARRL); FSK/GMSK treated FM-equivalent until measured |
+  | `AFSK1K2` | 8 dB | `REQUIRED_SNR_AFSK1K2_DB` | 1200 Bd AFSK packet decode threshold |
+  | `SSB`, `USB`, `LSB` | 6 dB | `REQUIRED_SNR_SSB_DB` | SSB voice readability |
+  | `CW` | 3 dB | `REQUIRED_SNR_CW_DB` | narrow-band by-ear copy |
+  | anything else | 10 dB | `DEFAULT_REQUIRED_SNR_DB` | FM-equivalent fail-safe |
+
+- **Satellite TX defaults (used when the frequency record carries no TX data; IPC callers can
+  override; canonized 2026-07-12 audit):**
+  - `DEFAULT_SAT_TX_POWER_W = 1.0` — typical amateur/CubeSat downlink is sub-watt to ~1 W
+    (the §6.6 sanity case below deliberately uses ISS's stronger 5 W).
+  - `DEFAULT_SAT_TX_GAIN_DBI = 0.0` — omni assumption.
+  - Satellite polarization when unknown: **LHCP assumed** (most LEO amateur downlinks are
+    circular; combined with a linear operator antenna this contributes the 3.01 dB of §6.4).
 - **Constants:**
   - `THERMAL_NOISE_DBM_HZ = −174` (= `10·log10(k_B · T_0 · 1 Hz / 1 mW)`, `T_0 = 290 K`).
-  - `REQUIRED_SNR_FM_VOICE_DB = 10.0` — amateur FM-voice readability threshold (ARRL).
 - **Tolerance:** **±2 dB** (cumulative — FSPL ±0.1, pol ±0.5, off-axis ±1, profile uncertainty ±1).
 - **Source:** ARRL Antenna Book §17 "Link Budgets"; Maral & Bousquet "Satellite Communications Systems" §5.
 - **Verification (sanity — ISS UHF voice nominal pass):**
@@ -666,7 +729,11 @@ operator overrides them via Settings → Profile.
 - **Tolerance:** mm level (closed form, equivalent to the iterative solution at LEO altitude).
 - **Source:** Bowring, B.R. (1976). "Transformation from spatial to geographical coordinates." Survey Review 23 (181): 323–327.
 - **Notes:**
-  - At the poles (`p ≈ 0`) `atan2` is numerically safe; no special-case code needed.
+  - At the poles (`p ≈ 0`) the `atan2` calls are numerically safe, but the **altitude** form
+    `alt = p / cos(lat) − N` degenerates as `cos(lat) → 0`. The implementation
+    (`coordinates.rs::ecef_to_geodetic`) falls back to `alt = |z| − b` when
+    `|cos(lat)| ≤ 1e-9` — exact at the pole since `N·(1−e²) = b` there. (Note corrected in the
+    2026-07-12 audit; it previously claimed no special case was needed.)
   - ISS sanity: `r_teme ≈ 6800 km` → `alt ≈ 420 km`, `lat ∈ ±51.6°` (orbital inclination).
 - **Added:** F5. **Status:** active.
 
@@ -939,6 +1006,20 @@ TLE expired            → score = 0    (target null, fail_safe)
 q_rotor = impossible   → score = min(score, BRIEF_GATE_CAP)
 space weather ≥ G4     → score = min(score, BRIEF_GATE_CAP)
 ```
+
+**TLE-expired threshold (defined 2026-07-12 audit — the gate previously had no numeric
+definition and `get_operator_brief` hardcoded `tle_expired: false`, so it never fired):**
+
+```
+TLE_EXPIRED_HOURS = 168        # 7 days; core/rotor/feasibility.rs
+tle_expired = (now − tle_epoch) > TLE_EXPIRED_HOURS
+```
+
+Rationale — the freshness ladder: 24 h auto-sync (§7.1 `tle_sync_max_age_hours`) keeps elsets
+current; 72 h is the soft UI stale warning (SystemHealthBar); at 168 h SGP4 along-track drift
+(1–3 km/day, §4) reaches 7–20+ km and pass timing/pointing for an operator brief is no longer
+trustworthy → hard fail-safe. Wired in `get_operator_brief` from the TLE epoch; the DTO exposes
+`tle_expired` so the UI can explain a zero score.
 
 This satisfies the roadmap §F8 acceptance criteria: high elevation + good margin + calm weather +
 rotor ok → ~96 (>70); expired/impossible/high-risk → ≤39 (<40).
@@ -1265,6 +1346,19 @@ maximized + shown only after the React shell reports two painted frames (`comple
 
 ## Change history
 
+- 2026-07-12 — Canon↔core conformance audit (alpha.2): (1) §6.4 orthogonal-linear cap — code
+  aligned to the canon 25 dB (was 30 dB in `loss_models.rs`); constant names in the canon now
+  mirror the code; the unverifiable ITU-R BO.652 attribution dropped; arbitrary-Δθ formula
+  explicitly marked forward-spec. (2) §6.6 required-SNR table consolidated into
+  `core/analysis/link_budget.rs::required_snr_for_mode` (single source; AFSK1k2 corrected
+  10 → 8 dB per canon; CW 3 dB and FSK/GMSK 10 dB canonized) and satellite TX defaults
+  (1 W / 0 dBi / assumed LHCP) canonized. (3) §8.7 TLE-expired gate got its missing numeric
+  definition (`TLE_EXPIRED_HOURS = 168`) and is now actually wired in `get_operator_brief`
+  (was hardcoded `false`). (4) Doc backfills: §4 Julian-date algorithm (Meeus eq. 7.1),
+  §5.1 `min_elevation_clamp`, §5.4 general-Lagrange TCA implementation note, §6.2 uplink
+  helper location fixed (frontend `correctedUplinkHz`) + Doppler sampling bounds,
+  §7.2 pole-altitude fallback note corrected. Literature check: GMST/WGS84/Bowring/NOAA
+  G-scale/FSPL/Maidenhead/GEO geometry all confirmed against current references.
 - 2026-07-12 — Alpha.2 startup P0: §13 added — hidden-splash reveal lifecycle with
   `SPLASH_REVEAL_FALLBACK` (4 s) and the splash failure timer `FAILURE_DELAY_MS` (15 s).
   Root cause of the persistent white flash: the splash WebView2 window was visible at creation

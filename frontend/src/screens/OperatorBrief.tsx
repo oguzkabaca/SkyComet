@@ -233,8 +233,15 @@ export function OperatorBrief() {
                   Rotor: {FEASIBILITY_LABEL[brief.feasibility]}
                 </Tag>
                 {brief.flipRecommended && <Tag tone="accent">Flip recommended</Tag>}
+                {brief.tleExpired && <Tag tone="danger">TLE expired</Tag>}
               </span>
             </div>
+            {brief.tleExpired && (
+              <StatusLine tone="error">
+                The TLE for this satellite is older than 7 days — pass timing and pointing are
+                untrustworthy, so the score is forced to 0. Sync TLEs from the Catalog screen.
+              </StatusLine>
+            )}
             {brief.flipRecommended && (
               <StatusLine>
                 Near-zenith pass — flip (over-the-top) mode is recommended to avoid the azimuth

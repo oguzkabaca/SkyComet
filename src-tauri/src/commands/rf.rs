@@ -6,8 +6,9 @@
 //! - `get_link_budget` — instantaneous range at an optional analysis time + frequency +
 //!   operator profile through `core::analysis::link_budget::compute_downlink`.
 //!
-//! Required SNR (per mode) comes from the `MODE_REQUIRED_SNR_DB` table;
-//! unknown modes fall back to `DEFAULT_REQUIRED_SNR_DB` (10 dB, FM equivalent).
+//! Required SNR (per mode) and satellite TX defaults come from the canon
+//! single source `core::analysis::link_budget` (§6.6); unknown modes fall
+//! back to the FM-equivalent default there.
 
 use std::sync::Arc;
 
@@ -25,27 +26,10 @@ use crate::core::orbit::sgp4_engine::Propagator;
 use crate::core::profile as op_profile;
 use crate::core::tle::cache::TleCache;
 
+// Doppler curve sampling bounds (canon §6.2 notes).
 const DOPPLER_DEFAULT_SAMPLES: usize = 121;
 const DOPPLER_MIN_SAMPLES: usize = 16;
 const DOPPLER_MAX_SAMPLES: usize = 1024;
-
-/// Required SNR by mode (kanon §6.6 notes — FM ~10, SSB/CW threshold lower).
-const DEFAULT_REQUIRED_SNR_DB: f64 = 10.0;
-fn required_snr_for_mode(mode: &str) -> f64 {
-    match mode.to_ascii_uppercase().as_str() {
-        "FM" | "AFSK1K2" | "FSK" | "GMSK" => 10.0,
-        "SSB" | "USB" | "LSB" => 6.0,
-        "CW" => 3.0,
-        _ => DEFAULT_REQUIRED_SNR_DB,
-    }
-}
-
-/// Default satellite TX power when frequency record does not list it.
-/// Amateur/CubeSat downlink typical (≈ 1 W); kanon §6.6 sanity case used 5 W
-/// but most CubeSats run sub-watt — we expose the parameter so the UI can
-/// override.
-const DEFAULT_SAT_TX_POWER_W: f64 = 1.0;
-const DEFAULT_SAT_TX_GAIN_DBI: f64 = 0.0;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -294,9 +278,13 @@ fn compute_link_budget_at(
 
     let profile = op_profile::load_or_seed(db).map_err(|e| map_err("profile_error", e))?;
     let mode_str = request.mode.unwrap_or_else(|| "FM".to_string());
-    let required_snr_db = required_snr_for_mode(&mode_str);
-    let tx_power = request.sat_tx_power_w.unwrap_or(DEFAULT_SAT_TX_POWER_W);
-    let tx_gain = request.sat_tx_gain_dbi.unwrap_or(DEFAULT_SAT_TX_GAIN_DBI);
+    let required_snr_db = link_budget::required_snr_for_mode(&mode_str);
+    let tx_power = request
+        .sat_tx_power_w
+        .unwrap_or(link_budget::DEFAULT_SAT_TX_POWER_W);
+    let tx_gain = request
+        .sat_tx_gain_dbi
+        .unwrap_or(link_budget::DEFAULT_SAT_TX_GAIN_DBI);
 
     // Satellite polarization: profile metadata doesn't carry it per-record yet;
     // assume circular (LHCP) — typical for amateur/CubeSat downlinks. UI may

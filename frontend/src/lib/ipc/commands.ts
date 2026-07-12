@@ -506,6 +506,8 @@ export interface OperatorBrief {
   offAxisLossDb: number;
   riskCode: SpaceWeatherLevel;
   rotorName: string;
+  /** Canon §8.7 fail-safe: TLE older than 7 days — score is forced to 0. */
+  tleExpired: boolean;
 }
 
 /** Built-in rotor presets for the Settings dropdown. */
