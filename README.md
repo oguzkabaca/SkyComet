@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="frontend/src/assets/skycomet-mark.png" alt="SkyComet logo" width="88">
+
 # SkyComet
 
 ### Plan the pass. Validate the link. Track with confidence.
@@ -9,9 +11,16 @@ It brings pass prediction, live tracking, RF analysis, space-weather context and
 control into one focused application.
 
 [![CI](https://github.com/oguzkabaca/SkyComet/actions/workflows/ci.yml/badge.svg)](https://github.com/oguzkabaca/SkyComet/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/oguzkabaca/SkyComet?include_prereleases&label=release)](https://github.com/oguzkabaca/SkyComet/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f.svg)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4.svg)
 ![Built with Rust and Tauri](https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri-24C8DB.svg)
+
+<br>
+
+![Quick Track during a live ISS pass — sky track, live azimuth and elevation, Doppler-corrected tuning and a pass readiness score](docs/assets/quick-track.png)
+
+<sub>Quick Track during an ISS pass — live sky track, Doppler-corrected tuning and pass readiness in one operational view.</sub>
 
 </div>
 
@@ -49,6 +58,17 @@ workflow in one place and answers the question that matters at the station:
   channel pending physical verification.)
 - **Operator Brief** — combine pass geometry, RF margin, space weather and rotor feasibility
   into one readiness score.
+
+## Interface
+
+| | |
+|:---:|:---:|
+| ![All-sky Pass Planner schedule with quality presets and a pass detail panel](docs/assets/pass-planner.png) | ![Satellite Passes screen with a polar sky plot and scored upcoming passes](docs/assets/satellite-passes.png) |
+| <sub>**Pass Planner** — every useful pass in the next hours on one timeline, with quality presets and per-pass detail.</sub> | <sub>**Satellite Passes** — one satellite in depth: polar sky track, pass windows, durations and quality scores.</sub> |
+| ![RF Planner with link margin, Doppler span and the full Doppler tuning curve](docs/assets/rf-planner.png) | ![Satellite catalog with radio profiles and a live ground-track map](docs/assets/catalog.png) |
+| <sub>**RF Planner** — link margin verdict, Doppler span and AOS→LOS receiver tuning guidance for the selected pass.</sub> | <sub>**Catalog** — amateur radio satellites with status, transmitter profiles and an offline-capable ground-track map.</sub> |
+
+<sub>Screenshots show the development preview in the Dark theme, rendered with simulated pass data.</sub>
 
 ## Operator workflow
 
@@ -125,7 +145,7 @@ actively refined through live Windows/WebView2 testing.
 
 | Area | Current evidence | Status |
 |---|---|---|
-| Automated behavior | 280 unit tests + 2 integration tests | Verified in CI |
+| Automated behavior | 287 unit tests + 2 integration tests | Verified in CI |
 | Numeric models | Canonical sanity values and regression tests | Verified |
 | Windows/WebView2 | Continuous development and live operator review | Verified |
 | macOS and Linux | No maintained build or manual validation yet | Unverified |
