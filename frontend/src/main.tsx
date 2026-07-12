@@ -17,14 +17,15 @@ import '@fontsource/ibm-plex-mono/latin-ext-400.css'
 import '@fontsource/ibm-plex-mono/latin-500.css'
 import '@fontsource/ibm-plex-mono/latin-ext-500.css'
 
-import './styles/tokens.css'
 import './styles/base.css'
 import App from './App.tsx'
+import { StartupReadySignal } from './components/StartupReadySignal'
 import { ThemeProvider } from './theme/ThemeProvider'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
+      <StartupReadySignal />
       <App />
     </ThemeProvider>
   </StrictMode>,

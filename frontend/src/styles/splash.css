@@ -1,0 +1,28 @@
+body {
+  overflow: hidden;
+}
+
+#startup-actions {
+  margin-top: 4px;
+}
+
+#startup-actions[hidden] {
+  display: none;
+}
+
+#startup-exit {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--fg);
+  background: var(--bg-panel);
+  font: 500 13px var(--font-ui);
+  cursor: pointer;
+}
+
+#startup-exit:hover,
+#startup-exit:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}

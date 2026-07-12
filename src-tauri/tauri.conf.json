@@ -18,14 +18,19 @@
   "app": {
     "windows": [
       {
+        "label": "splash",
         "title": "Skycomet",
+        "url": "splash.html",
         "width": 1400,
         "height": 900,
         "minWidth": 1024,
         "minHeight": 600,
         "resizable": true,
+        "center": true,
         "fullscreen": false,
-        "decorations": false
+        "decorations": false,
+        "visible": false,
+        "backgroundColor": [246, 245, 242, 0]
       }
     ],
     "security": {

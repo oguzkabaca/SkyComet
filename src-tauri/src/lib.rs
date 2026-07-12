@@ -4,10 +4,13 @@ pub mod core;
 #[cfg(test)]
 mod release_config_tests;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tauri::{Emitter, Manager};
+use serde::Serialize;
+use tauri::webview::Color;
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::core::db::{self, Database};
@@ -19,6 +22,41 @@ const TICK_INTERVAL: Duration = Duration::from_millis(500);
 const TRACKING_UPDATE_EVENT: &str = "tracking_update";
 const TRACKING_ERROR_EVENT: &str = "tracking_error";
 const CATALOG_SNAPSHOT_FILE: &str = "catalog-snapshot.json";
+const SPLASH_WINDOW_LABEL: &str = "splash";
+const MAIN_WINDOW_LABEL: &str = "main";
+const STARTUP_STATUS_EVENT: &str = "startup_status";
+// The splash is created hidden and shown from `begin_startup` once its themed
+// HTML has reached the compositor. If the frontend never runs (broken bundle),
+// this fallback reveals the splash anyway so the process is never windowless.
+const SPLASH_REVEAL_FALLBACK: Duration = Duration::from_secs(4);
+
+struct BootstrapGuard(AtomicBool);
+
+impl Default for BootstrapGuard {
+    fn default() -> Self {
+        Self(AtomicBool::new(false))
+    }
+}
+
+impl BootstrapGuard {
+    fn claim(&self) -> bool {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct StartupStatus {
+    message: String,
+    fatal: bool,
+}
+
+struct BootstrapResources {
+    database: Database,
+    tracking_state: TrackingState,
+    tle_cache: Arc<TleCache>,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,50 +68,24 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            let app_data_dir = app.path().app_data_dir().ok();
-            let db_path = db::resolve_db_path(app_data_dir).map_err(|e| {
-                tracing::error!(error = %e, "database path resolution failed");
-                Box::<dyn std::error::Error>::from(e.to_string())
-            })?;
-            tracing::info!(path = %db_path.display(), "opening database");
-            let database = Database::open(&db_path).map_err(|e| {
-                tracing::error!(error = %e, "database open failed");
-                Box::<dyn std::error::Error>::from(e.to_string())
-            })?;
-            let tracking_state = TrackingState::new();
-            if let Ok(Some(norad)) = tracking::load_last_active(&database) {
-                tracking_state.set_active(Some(norad));
-                tracing::info!(norad, "restored last active satellite");
-            }
-            let tle_cache = Arc::new(TleCache::new());
-            app.manage(database.clone());
-            app.manage(tracking_state.clone());
-            app.manage(Arc::clone(&tle_cache));
-            // F9 — live serial rotor connection (starts disconnected).
-            app.manage(commands::serial_rotor::RotorConnection::default());
-            // Quick Track (ADR 0013 D2) — auto-track drive state.
-            app.manage(commands::serial_rotor::AutoTrack::default());
-
-            // F5 — seed the catalog from the bundled snapshot if the DB
-            // is still empty. Failures are logged but never block startup;
-            // the user can still trigger a live sync later.
-            seed_catalog_from_bundle(app.handle(), &database);
-
-            // Dynamic TLE refresh — the bundled snapshot seeds elsets once
-            // and nothing else rewrites `satellites_tle`, so they must be
-            // re-fetched at runtime or they age indefinitely. Background
-            // task; a network failure leaves the seeded data in place.
-            tauri::async_runtime::spawn(refresh_tle_if_stale(
-                database.clone(),
-                Arc::clone(&tle_cache),
-            ));
-
+            app.manage(BootstrapGuard::default());
             let handle = app.handle().clone();
-            tauri::async_runtime::spawn(tracking_loop(handle, database, tracking_state, tle_cache));
-            tracing::info!("Skycomet starting");
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(SPLASH_REVEAL_FALLBACK).await;
+                if let Some(splash) = handle.get_webview_window(SPLASH_WINDOW_LABEL) {
+                    if !splash.is_visible().unwrap_or(true) {
+                        tracing::warn!("splash never signalled first paint; revealing it anyway");
+                        show_splash_window(&handle);
+                    }
+                }
+            });
+            tracing::info!("startup splash created hidden; waiting for first paint");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            begin_startup,
+            complete_startup,
+            abort_startup,
             commands::location::get_location,
             commands::location::set_location,
             commands::location::get_site_analysis,
@@ -119,6 +131,172 @@ pub fn run() {
     {
         tracing::error!(error = %e, "error while running tauri application");
         std::process::exit(1);
+    }
+}
+
+#[tauri::command]
+fn begin_startup(app: tauri::AppHandle, guard: tauri::State<'_, BootstrapGuard>) {
+    // The splash invokes this only after two compositor frames, so its themed
+    // HTML is painted; revealing it here is what prevents the white flash a
+    // visible-at-creation WebView2 window produces during engine cold start.
+    show_splash_window(&app);
+
+    if !guard.claim() {
+        return;
+    }
+
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        emit_startup_status(&handle, "Opening the station database", false);
+        match initialize_resources(&handle) {
+            Ok(resources) => finish_bootstrap(&handle, resources),
+            Err(error) => {
+                tracing::error!(error = %error, "startup initialization failed");
+                emit_startup_status(
+                    &handle,
+                    &format!("Initialization failed: {error}. Your existing data was not reset."),
+                    true,
+                );
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn complete_startup(app: tauri::AppHandle) -> Result<(), String> {
+    let main = app
+        .get_webview_window(MAIN_WINDOW_LABEL)
+        .ok_or_else(|| "main window is not ready".to_string())?;
+    // Maximize only now, from the hidden state with React already painted: a
+    // builder-time `maximized(true)` issues SW_MAXIMIZE on Windows, which
+    // reveals the still-unpainted window and reintroduces the white frame.
+    main.maximize()
+        .map_err(|error| format!("main window could not be maximized: {error}"))?;
+    main.show()
+        .map_err(|error| format!("main window could not be shown: {error}"))?;
+    main.set_focus()
+        .map_err(|error| format!("main window could not be focused: {error}"))?;
+
+    if let Some(splash) = app.get_webview_window(SPLASH_WINDOW_LABEL) {
+        splash
+            .close()
+            .map_err(|error| format!("startup splash could not be closed: {error}"))?;
+    }
+    tracing::info!("startup handoff complete");
+    Ok(())
+}
+
+#[tauri::command]
+fn abort_startup(app: tauri::AppHandle) {
+    app.exit(1);
+}
+
+fn initialize_resources(app: &tauri::AppHandle) -> Result<BootstrapResources, String> {
+    let app_data_dir = app.path().app_data_dir().ok();
+    let db_path = db::resolve_db_path(app_data_dir).map_err(|error| {
+        tracing::error!(error = %error, "database path resolution failed");
+        error.to_string()
+    })?;
+    tracing::info!(path = %db_path.display(), "opening database");
+    let database = Database::open(&db_path).map_err(|error| {
+        tracing::error!(error = %error, "database open failed");
+        error.to_string()
+    })?;
+
+    let tracking_state = TrackingState::new();
+    if let Ok(Some(norad)) = tracking::load_last_active(&database) {
+        tracking_state.set_active(Some(norad));
+        tracing::info!(norad, "restored last active satellite");
+    }
+    let tle_cache = Arc::new(TleCache::new());
+
+    emit_startup_status(app, "Preparing the satellite catalog", false);
+    // Best-effort: a seed failure is logged and the user can retry a live sync.
+    seed_catalog_from_bundle(app, &database);
+
+    Ok(BootstrapResources {
+        database,
+        tracking_state,
+        tle_cache,
+    })
+}
+
+fn finish_bootstrap(app: &tauri::AppHandle, resources: BootstrapResources) {
+    let BootstrapResources {
+        database,
+        tracking_state,
+        tle_cache,
+    } = resources;
+
+    app.manage(database.clone());
+    app.manage(tracking_state.clone());
+    app.manage(Arc::clone(&tle_cache));
+    app.manage(commands::serial_rotor::RotorConnection::default());
+    app.manage(commands::serial_rotor::AutoTrack::default());
+
+    emit_startup_status(app, "Loading the operator interface", false);
+    if let Err(error) = create_main_window(app) {
+        tracing::error!(error = %error, "main window creation failed");
+        emit_startup_status(
+            app,
+            &format!("The operator interface could not be created: {error}"),
+            true,
+        );
+        return;
+    }
+
+    tauri::async_runtime::spawn(refresh_tle_if_stale(
+        database.clone(),
+        Arc::clone(&tle_cache),
+    ));
+    tauri::async_runtime::spawn(tracking_loop(
+        app.clone(),
+        database,
+        tracking_state,
+        tle_cache,
+    ));
+}
+
+fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
+    WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+        .title("Skycomet")
+        .inner_size(1400.0, 900.0)
+        .min_inner_size(1024.0, 600.0)
+        .resizable(true)
+        .decorations(false)
+        .center()
+        .visible(false)
+        .background_color(Color(246, 245, 242, 0))
+        .build()?;
+    Ok(())
+}
+
+fn show_splash_window(app: &tauri::AppHandle) {
+    let Some(splash) = app.get_webview_window(SPLASH_WINDOW_LABEL) else {
+        return;
+    };
+    if splash.is_visible().unwrap_or(false) {
+        return;
+    }
+    if let Err(error) = splash.show() {
+        tracing::warn!(error = %error, "splash window could not be shown");
+        return;
+    }
+    if let Err(error) = splash.set_focus() {
+        tracing::warn!(error = %error, "splash window could not be focused");
+    }
+}
+
+fn emit_startup_status(app: &tauri::AppHandle, message: &str, fatal: bool) {
+    if let Err(error) = app.emit_to(
+        SPLASH_WINDOW_LABEL,
+        STARTUP_STATUS_EVENT,
+        StartupStatus {
+            message: message.to_string(),
+            fatal,
+        },
+    ) {
+        tracing::warn!(error = %error, "startup status emit failed");
     }
 }
 
@@ -301,4 +479,16 @@ fn init_tracing() {
         .with(filter)
         .with(fmt::layer().with_target(false))
         .init();
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::BootstrapGuard;
+
+    #[test]
+    fn bootstrap_can_only_be_claimed_once() {
+        let guard = BootstrapGuard::default();
+        assert!(guard.claim());
+        assert!(!guard.claim());
+    }
 }

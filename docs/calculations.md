@@ -1248,8 +1248,28 @@ invariants asserted by the `core/tracking.rs` unit tests (not a single fabricate
 
 ---
 
+## 13. Startup lifecycle — timing constants
+
+Alpha.2 startup P0 (task 2026-07-12 §10): the splash window is created **hidden**
+(`visible: false` in `tauri.conf.json`) and revealed from `begin_startup` only after its themed
+HTML has reached two compositor frames, because a visible-at-creation WebView2 window presents a
+white HWND for the whole engine cold start. The main window is likewise created hidden and is
+maximized + shown only after the React shell reports two painted frames (`complete_startup`).
+
+| Constant | Value | Where | Rationale |
+|---|---|---|---|
+| `SPLASH_REVEAL_FALLBACK` | 4 s | `src-tauri/src/lib.rs` | Safety net: if the splash frontend never runs (broken bundle → no `begin_startup`), reveal the splash anyway so the process is never windowless. Well past a normal WebView2 cold paint (≈1–2 s), well before the frontend failure timer below. |
+| `FAILURE_DELAY_MS` | 15 s | `frontend/public/startup.js` | If neither the ready signal nor a fatal status arrives, the startup surface switches to its error state with an Exit action; bounds a silent hang. |
+
+**Status:** active (2026-07-12, alpha.2 startup P0).
+
 ## Change history
 
+- 2026-07-12 — Alpha.2 startup P0: §13 added — hidden-splash reveal lifecycle with
+  `SPLASH_REVEAL_FALLBACK` (4 s) and the splash failure timer `FAILURE_DELAY_MS` (15 s).
+  Root cause of the persistent white flash: the splash WebView2 window was visible at creation
+  and showed a white HWND during engine cold start; CSS/alpha/React changes act after that
+  interval and could never fix it. Main window now starts maximized on handoff.
 - 2026-07-11 — Alpha release hardening (ADR 0014, 2026-07-04 audit closure): §10.1 added —
   named `MAX_RESPONSE_BYTES` guards on the TLE (2 MiB), space-weather (1 MiB) and SatNOGS
   (32 MiB) fetchers, matching the existing location-detect pattern. Startup snapshot seeding

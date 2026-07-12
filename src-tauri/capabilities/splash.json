@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "splash",
+  "description": "Minimal capability for the startup splash window",
+  "windows": ["splash"],
+  "permissions": [
+    "core:default"
+  ]
+}

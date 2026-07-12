@@ -7,20 +7,20 @@
     <script src="/startup.js"></script>
     <link rel="stylesheet" href="/src/styles/tokens.css" />
     <link rel="stylesheet" href="/src/styles/startup.css" />
+    <link rel="stylesheet" href="/src/styles/splash.css" />
     <title>Skycomet</title>
   </head>
   <body>
     <div id="startup-screen" role="status" aria-live="polite" aria-label="Skycomet is starting">
       <div class="startup-content">
         <img class="startup-logo" src="/favicon.png" alt="Skycomet" />
-        <p id="startup-message">Starting Skycomet</p>
-        <p id="startup-help" hidden>
-          Skycomet could not finish starting. Close the application and try again. If the problem
-          continues, review the application log.
-        </p>
+        <p id="startup-message">Preparing Skycomet</p>
+        <p id="startup-help" hidden></p>
+        <div id="startup-actions" hidden>
+          <button id="startup-exit" type="button">Exit Skycomet</button>
+        </div>
       </div>
     </div>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/splash.ts"></script>
   </body>
 </html>

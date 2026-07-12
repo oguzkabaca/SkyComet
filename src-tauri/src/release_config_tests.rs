@@ -68,6 +68,38 @@ fn bundle_matches_the_alpha_release_channel() {
 }
 
 #[test]
+fn splash_is_the_only_eager_window_and_has_a_non_white_background() {
+    let conf = conf();
+    let windows = conf["app"]["windows"]
+        .as_array()
+        .expect("app windows must be configured");
+    assert_eq!(
+        windows.len(),
+        1,
+        "only the lightweight splash may be created before initialization"
+    );
+    let splash = windows.first().expect("the splash window must exist");
+    assert_eq!(splash["label"], "splash");
+    assert_eq!(splash["url"], "splash.html");
+    assert_eq!(
+        splash["visible"],
+        serde_json::json!(false),
+        "the splash must be created hidden and revealed only after its first paint; \
+         a visible-at-creation WebView2 window shows a white HWND during engine cold start"
+    );
+    assert_eq!(
+        splash["backgroundColor"],
+        serde_json::json!([246, 245, 242, 0]),
+        "the splash surface must match Calm and the WebView layer must be transparent"
+    );
+    assert_ne!(
+        splash["backgroundColor"],
+        serde_json::json!([255, 255, 255, 0]),
+        "a white native surface reintroduces the startup flash"
+    );
+}
+
+#[test]
 fn manifest_versions_are_in_sync() {
     let conf = conf();
     let tauri_version = conf["version"].as_str().expect("version missing");
