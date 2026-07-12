@@ -20,7 +20,7 @@
   color: var(--fg);
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: background 120ms, border-color 120ms, filter 120ms;
+  transition: background-color 120ms, border-color 120ms, filter 120ms;
 }
 
 .btn:hover:not(:disabled) {
@@ -38,13 +38,17 @@
 }
 
 .primary {
-  background: var(--accent);
+  /* Keep the 36 px hit target/layout box, but paint the accent inside the
+     1 px border area. Otherwise the filled variant looks 2 px taller than
+     an outlined button even though their measured boxes are identical. */
+  background-color: var(--accent);
+  background-clip: padding-box;
   color: var(--accent-fg);
-  border-color: var(--accent);
+  border-color: transparent;
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--accent);
+  background-color: var(--accent);
   filter: brightness(1.06);
 }
 
