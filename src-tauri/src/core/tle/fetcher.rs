@@ -56,6 +56,22 @@ impl CelestrakGroup {
     }
 }
 
+// Compile-time guard for the canon §7.6 invariant. The amateur-only default
+// filter is correct only because `Amateur` is written *last* to the single
+// `source` column (last-wins `ON CONFLICT`), so an amateur satellite's tag
+// survives its other group memberships. Appending a group after `Amateur`
+// would silently drop amateur satellites from every default view (the exact
+// symptom Oğuz caught with the ISS). This turns a reorder into a build error;
+// the structural fix (a satellite↔group many-to-many table) is B-017,
+// deferred to beta — see docs/decisions/0015-tle-group-membership.md.
+const _: () = {
+    let all = CelestrakGroup::ALL;
+    assert!(
+        matches!(all[all.len() - 1], CelestrakGroup::Amateur),
+        "CelestrakGroup::ALL must end with Amateur (canon §7.6): reordering silently breaks the amateur-only filter",
+    );
+};
+
 pub struct FetchOutcome {
     pub records: Vec<TleRecord>,
     pub skipped: Vec<TleError>,

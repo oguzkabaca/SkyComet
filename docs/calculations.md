@@ -837,11 +837,13 @@ operator overrides them via Settings → Profile.
     `stations`/`visual`) was missing from every amateur-only view. Fix: `CelestrakGroup::ALL` now
     ends with `Amateur`, so an amateur-group satellite's tag always wins regardless of its other
     memberships; `scripts/build_catalog_snapshot.py` mirrors the same order and last-wins dedup for
-    the bundled seed. **Residual risk:** if a future CelesTrak group is added to `ALL` *after*
-    `Amateur`, this invariant breaks silently — `amateur_group_is_synced_last` (fetcher.rs) is a unit
-    test, not a compile-time guard. A satellite↔group many-to-many table would remove the ordering
-    dependency entirely; deferred (tracked internally as **B-017**) since the reorder fixes the
-    practical symptom today.
+    the bundled seed. **Invariant now compile-time guarded (2026-07-12):** a `const` assertion in
+    `tle::fetcher` fails the build if `CelestrakGroup::ALL` does not end with `Amateur`, so appending
+    a group after `Amateur` can no longer break the amateur-only filter silently (the runtime
+    `amateur_group_is_synced_last` test is kept as complementary documentation). This hardens the
+    single-`source` model but does not make multi-group membership first-class; the structural fix
+    (a satellite↔group many-to-many table) is **B-017**, deferred to beta — see
+    [ADR 0015](decisions/0015-tle-group-membership.md).
 - **Added:** F5. **Status:** active. **Amateur-only default:** 2026-07-11, sprint mode.
 
 ### 7.7 Satellite footprint (horizon circle)

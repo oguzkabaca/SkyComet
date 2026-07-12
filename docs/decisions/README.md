@@ -23,6 +23,7 @@ Format `NNNN-kebab-case-title.md`, with a sequence number.
 - [0012 — Location detection (IP + system positioning)](0012-location-detection.md)
 - [0013 — Quick Track operations redesign](0013-quick-track-ops-redesign.md)
 - [0014 — Alpha release channel and versioned distribution](0014-alpha-release-channel.md)
+- [0015 — TLE group membership (B-017)](0015-tle-group-membership.md)
 
 > Note: some ADR numbers (0003, 0007, 0009) belong to internal development processes and are
 > not part of this repository; the gaps in numbering are intentional.
