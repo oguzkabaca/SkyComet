@@ -224,7 +224,12 @@ export function PassPlanner({ onOpenOperation }: Props) {
                 onChange={(e) => setQuery(e.target.value)}
               />
             </Field>
-            <Button variant="primary" onClick={() => void load(true)} disabled={loading}>
+            <Button
+              className={styles.refreshButton}
+              variant="primary"
+              onClick={() => void load(true)}
+              disabled={loading}
+            >
               {loading ? 'Computing…' : 'Refresh'}
             </Button>
           </div>

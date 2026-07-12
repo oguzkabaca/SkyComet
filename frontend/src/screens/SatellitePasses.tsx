@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field } from '../components/Field';
 import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
+import { SelectionButton } from '../components/SelectionButton';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
@@ -219,16 +220,13 @@ export function SatellitePasses() {
 
           <div className={styles.toolbar}>
             {selectedSat && (
-              <button
-                type="button"
+              <SelectionButton
                 className={styles.targetButton}
                 onClick={() => setPickerOpen(true)}
                 title="Change satellite"
-              >
-                <span className={styles.targetName}>{selectedSat.name}</span>
-                <span className={styles.targetMeta}>NORAD {selectedSat.norad_id}</span>
-                <span className={styles.targetChange}>Change</span>
-              </button>
+                label={selectedSat.name}
+                meta={`NORAD ${selectedSat.norad_id}`}
+              />
             )}
             {selectedSat && hasComputed && (
               <>

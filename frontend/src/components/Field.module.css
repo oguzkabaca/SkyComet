@@ -13,11 +13,11 @@
 
 .field input,
 .field select {
-  height: 36px;
+  height: var(--control-height);
   padding: 0 12px;
   background: var(--bg-inset);
   border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
+  border-radius: var(--control-radius);
   color: var(--fg);
   font-family: var(--font-mono);
   font-size: 13px;

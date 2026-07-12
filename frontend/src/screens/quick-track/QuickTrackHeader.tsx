@@ -1,4 +1,5 @@
 import { Button } from '../../components/Button';
+import { SelectionButton } from '../../components/SelectionButton';
 import { ROTOR_ENABLED } from '../../lib/features';
 import type { SatelliteSummary } from '../../lib/ipc/commands';
 import { TrackScoreBadge } from './TrackScoreBadge';
@@ -85,19 +86,13 @@ export function QuickTrackHeader(props: Props) {
             </>
           ) : selectedSat ? (
             <>
-              <button
-                type="button"
+              <SelectionButton
                 className={styles.target}
                 onClick={onOpenDialog}
                 title="Change satellite or RF profile"
-              >
-                <span className={styles.targetName}>{selectedSat.name}</span>
-                <span className={styles.targetMeta}>
-                  NORAD {selectedSat.norad_id}
-                  {rfLabel ? ` · ${rfLabel}` : ''}
-                </span>
-                <span className={styles.targetChange}>Change</span>
-              </button>
+                label={selectedSat.name}
+                meta={`NORAD ${selectedSat.norad_id}${rfLabel ? ` · ${rfLabel}` : ''}`}
+              />
               <TrackScoreBadge norad={norad} />
               <TrackingActionButton
                 hasSatellite

@@ -64,59 +64,19 @@
 
 .toolbar {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 9px;
 }
 
 .targetButton {
   width: 250px;
   max-width: 42vw;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
-  column-gap: 14px;
-  height: 46px;
-  padding: 5px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--bg-inset);
-  color: var(--fg);
-  font-family: var(--font-ui);
-  text-align: left;
-  cursor: pointer;
 }
 
 .recomputeButton {
   min-width: 0;
-  height: 36px;
+  height: var(--control-height);
   padding-inline: 12px;
-}
-
-.targetButton:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
-}
-
-.targetName {
-  overflow: hidden;
-  font-size: 12px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.targetMeta {
-  color: var(--fg-dim);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.targetChange {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: center;
-  color: var(--accent);
-  font-size: 10px;
 }
 
 .alerts {
@@ -709,7 +669,7 @@
   }
 
   .recomputeButton {
-    height: 46px;
+    height: var(--control-height);
   }
 
   .summaryGrid,

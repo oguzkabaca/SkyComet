@@ -17,11 +17,11 @@
 .search {
   flex: 1 1 240px;
   min-width: 200px;
-  height: 36px;
+  height: var(--control-height);
   padding: 0 12px;
   background: var(--bg-inset);
   border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
+  border-radius: var(--control-radius-pill);
   color: var(--fg);
   font-family: var(--font-ui);
   font-size: 13px;
@@ -37,6 +37,34 @@
   color: var(--fg-dim);
   font-size: 12px;
   font-family: var(--font-mono);
+  line-height: 1;
+  white-space: nowrap;
+  padding-left: 9px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.syncButton {
+  height: var(--control-height);
+  min-width: 88px;
+}
+
+.syncState {
+  flex: none;
+  max-width: 100%;
+  height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--control-radius-pill);
+  background: var(--bg-inset);
+}
+
+.syncState > :first-child {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .alerts {

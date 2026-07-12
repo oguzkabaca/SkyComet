@@ -1,0 +1,50 @@
+.control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 14px 12px;
+  column-gap: 12px;
+  row-gap: 0;
+  padding: 4px 11px;
+  background: var(--bg-inset);
+  text-align: left;
+}
+
+.control:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.label,
+.meta {
+  grid-column: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label {
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.meta {
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 12px;
+}
+
+.action {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1;
+}

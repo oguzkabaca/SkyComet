@@ -271,6 +271,7 @@ export function SatelliteCatalog() {
   const visibleRows = rows ?? [];
   const canPrev = !isSearching && page > 0;
   const canNext = !isSearching && visibleRows.length === PAGE_SIZE;
+  const syncing = syncPhase === 'started';
 
   let syncBadgeText = 'fresh';
   let syncBadgeTone: Tone = 'ok';
@@ -302,21 +303,32 @@ export function SatelliteCatalog() {
           onChange={onScopeChange}
           ariaLabel="Catalog scope"
         />
-        <Button variant="primary" onClick={onSync}>
-          Sync now
+        <Button className={styles.syncButton} variant="primary" onClick={onSync} disabled={syncing}>
+          {syncing ? 'Syncing…' : 'Sync now'}
         </Button>
-        <Tag tone={syncBadgeTone}>{syncBadgeText}</Tag>
-        <span className={styles.meta}>
-          last sync: {formatTimeAgo(syncStatus?.lastSyncedAt ?? null)}
-          {syncMessage ? ` · ${syncMessage}` : ''}
-        </span>
+        <div className={styles.syncState} aria-live="polite">
+          <Tag tone={syncBadgeTone}>{syncBadgeText}</Tag>
+          <span className={styles.meta}>
+            Last sync {formatTimeAgo(syncStatus?.lastSyncedAt ?? null)}
+          </span>
+        </div>
       </div>
 
-      {error && (
+      {(error || (syncMessage && !syncing)) && (
         <div className={styles.alerts}>
-          <StatusLine tone="error" role="alert">
-            {error}
-          </StatusLine>
+          {error && (
+            <StatusLine tone="error" role="alert">
+              {error}
+            </StatusLine>
+          )}
+          {syncMessage && !syncing && (
+            <StatusLine
+              tone={syncPhase === 'failed' ? 'error' : 'neutral'}
+              role={syncPhase === 'failed' ? 'alert' : 'status'}
+            >
+              {syncMessage}
+            </StatusLine>
+          )}
         </div>
       )}
 

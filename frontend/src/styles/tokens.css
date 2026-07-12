@@ -51,6 +51,12 @@
   --r-xl: 22px;
   --r-pill: 999px;
 
+  /* Shared interactive-control geometry. Keep buttons, fields, segmented
+     controls and compound selectors on one scaling-safe rhythm. */
+  --control-height: 36px;
+  --control-radius: var(--r-md);
+  --control-radius-pill: var(--r-pill);
+
   --sh-1: 0 1px 0 oklch(0 0 0 / .02), 0 1px 2px oklch(0 0 0 / .04);
   --sh-2: 0 1px 0 oklch(0 0 0 / .02), 0 6px 14px oklch(0 0 0 / .06);
   --sh-pop: 0 16px 38px oklch(0 0 0 / .08), 0 4px 10px oklch(0 0 0 / .05);

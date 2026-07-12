@@ -5,6 +5,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field } from '../components/Field';
 import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
+import { SelectionButton } from '../components/SelectionButton';
 import { StatusLine } from '../components/StatusLine';
 import { Tag } from '../components/Tag';
 import {
@@ -388,20 +389,17 @@ export function RFPlanner({ operationIntent, onConsumeOperation, onOpenOperation
 
             {selectedSat && (
               <div className={styles.toolbar}>
-                <button
-                  type="button"
+                <SelectionButton
                   className={styles.targetButton}
                   onClick={() => setPickerOpen(true)}
                   title="Change satellite and RF profile"
-                >
-                  <span className={styles.targetName}>{selectedSat.name}</span>
-                  <span className={styles.targetMeta}>
-                    {passContext
+                  label={selectedSat.name}
+                  meta={
+                    passContext
                       ? `Planned ${formatTime(passContext.pass.aos)} · ${profileBand}`
-                      : profileBand}
-                  </span>
-                  <span className={styles.targetChange}>Change</span>
-                </button>
+                      : profileBand
+                  }
+                />
                 {hasComputed && (
                   <>
                     {activePass && configuredFreqHz !== null && (

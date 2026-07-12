@@ -95,6 +95,16 @@
   min-width: 170px;
 }
 
+.search input {
+  border-radius: var(--control-radius-pill);
+}
+
+.refreshButton {
+  align-self: flex-end;
+  height: var(--control-height);
+  min-height: var(--control-height);
+}
+
 .alerts {
   display: flex;
   flex-direction: column;
