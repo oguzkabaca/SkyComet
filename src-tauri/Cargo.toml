@@ -1,6 +1,6 @@
 [package]
 name = "skycomet"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 description = "Skycomet — amateur radio satellite ground station"
 authors = ["Oguz Kabaca <kabacaoguzkbc@gmail.com>"]
 edition = "2021"
