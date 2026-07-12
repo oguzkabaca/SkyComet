@@ -4,9 +4,9 @@ pub mod core;
 #[cfg(test)]
 mod release_config_tests;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::webview::Color;
@@ -29,6 +29,84 @@ const STARTUP_STATUS_EVENT: &str = "startup_status";
 // HTML has reached the compositor. If the frontend never runs (broken bundle),
 // this fallback reveals the splash anyway so the process is never windowless.
 const SPLASH_REVEAL_FALLBACK: Duration = Duration::from_secs(4);
+
+// Startup-timing baseline probe (alpha.2 release plan §6). These record the
+// cold-start timeline so the packaged release build — which has no console
+// (`windows_subsystem = "windows"`) — still yields measurable numbers, written
+// to `<app_data_dir>/diagnostics/startup-timings.csv`. Purely diagnostic: never
+// on the visual handoff path, best-effort, never fatal.
+static PROCESS_START: OnceLock<Instant> = OnceLock::new();
+static SPLASH_SHOWN_MS: AtomicU64 = AtomicU64::new(0);
+static MAIN_CREATED_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Milliseconds since the process entered `run()`. Zero until initialized.
+fn startup_elapsed_ms() -> u64 {
+    PROCESS_START
+        .get()
+        .map(|t| t.elapsed().as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Record a milestone's elapsed time exactly once (first writer wins).
+fn mark_startup_milestone(slot: &AtomicU64) {
+    let _ = slot.compare_exchange(
+        0,
+        startup_elapsed_ms().max(1),
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+    );
+}
+
+/// Append the cold-start timeline to the diagnostics CSV. Best-effort: any
+/// failure is logged and swallowed so it can never affect startup.
+fn record_startup_timings(app: &tauri::AppHandle, handoff_ms: u64) {
+    let splash_ms = SPLASH_SHOWN_MS.load(Ordering::Relaxed);
+    let main_ms = MAIN_CREATED_MS.load(Ordering::Relaxed);
+    tracing::info!(
+        splash_ms,
+        main_created_ms = main_ms,
+        handoff_ms,
+        "startup timing baseline"
+    );
+
+    let Some(dir) = app.path().app_data_dir().ok() else {
+        return;
+    };
+    let diagnostics = dir.join("diagnostics");
+    if let Err(error) = std::fs::create_dir_all(&diagnostics) {
+        tracing::warn!(error = %error, "could not create diagnostics directory");
+        return;
+    }
+    let path = diagnostics.join("startup-timings.csv");
+    let needs_header = !path.exists();
+    let profile = if cfg!(debug_assertions) {
+        "dev"
+    } else {
+        "release"
+    };
+    let mut line = String::new();
+    if needs_header {
+        line.push_str("profile,timestamp,splash_ms,main_created_ms,handoff_ms\n");
+    }
+    line.push_str(&format!(
+        "{profile},{},{splash_ms},{main_ms},{handoff_ms}\n",
+        chrono::Utc::now().to_rfc3339()
+    ));
+
+    use std::io::Write;
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        Ok(mut file) => {
+            if let Err(error) = file.write_all(line.as_bytes()) {
+                tracing::warn!(error = %error, "startup timing write failed");
+            }
+        }
+        Err(error) => tracing::warn!(error = %error, "startup timing file open failed"),
+    }
+}
 
 struct BootstrapGuard(AtomicBool);
 
@@ -60,6 +138,7 @@ struct BootstrapResources {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    PROCESS_START.get_or_init(Instant::now);
     init_tracing();
 
     if let Err(e) = tauri::Builder::default()
@@ -183,6 +262,8 @@ fn complete_startup(app: tauri::AppHandle) -> Result<(), String> {
             .map_err(|error| format!("startup splash could not be closed: {error}"))?;
     }
     tracing::info!("startup handoff complete");
+    // Diagnostic only, after the visual handoff is already done.
+    record_startup_timings(&app, startup_elapsed_ms());
     Ok(())
 }
 
@@ -244,6 +325,7 @@ fn finish_bootstrap(app: &tauri::AppHandle, resources: BootstrapResources) {
         );
         return;
     }
+    mark_startup_milestone(&MAIN_CREATED_MS);
 
     tauri::async_runtime::spawn(refresh_tle_if_stale(
         database.clone(),
@@ -285,6 +367,9 @@ fn show_splash_window(app: &tauri::AppHandle) {
     if let Err(error) = splash.set_focus() {
         tracing::warn!(error = %error, "splash window could not be focused");
     }
+    // First themed window paint: the headline "process start -> themed shell"
+    // metric for §6.
+    mark_startup_milestone(&SPLASH_SHOWN_MS);
 }
 
 fn emit_startup_status(app: &tauri::AppHandle, message: &str, fatal: bool) {
@@ -483,12 +568,35 @@ fn init_tracing() {
 
 #[cfg(test)]
 mod startup_tests {
-    use super::BootstrapGuard;
+    use super::{mark_startup_milestone, BootstrapGuard, PROCESS_START};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Instant;
 
     #[test]
     fn bootstrap_can_only_be_claimed_once() {
         let guard = BootstrapGuard::default();
         assert!(guard.claim());
         assert!(!guard.claim());
+    }
+
+    #[test]
+    fn startup_milestone_records_only_first_writer() {
+        PROCESS_START.get_or_init(Instant::now);
+        let slot = AtomicU64::new(0);
+
+        mark_startup_milestone(&slot);
+        let first = slot.load(Ordering::Relaxed);
+        assert!(
+            first >= 1,
+            "a recorded milestone is never left at the unset 0"
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        mark_startup_milestone(&slot);
+        assert_eq!(
+            slot.load(Ordering::Relaxed),
+            first,
+            "a later call must not overwrite the first milestone"
+        );
     }
 }
