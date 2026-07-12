@@ -41,11 +41,12 @@ import { PassTimeline } from './quick-track/PassTimeline';
 import { QuickTrackHeader, type TrackingMode } from './quick-track/QuickTrackHeader';
 import { RFDopplerCard } from './quick-track/RFDopplerCard';
 import {
-  findRfProfileIndex,
   isTrackable,
+  resolveRfPreference,
   rfLabelOf,
-  rfProfileKey,
+  selectionKey,
   type RFSelection,
+  type ResolvedRf,
 } from './quick-track/rf';
 import { RotorStatusCard } from './quick-track/RotorStatusCard';
 import { SetSatelliteDialog } from './quick-track/SetSatelliteDialog';
@@ -68,91 +69,6 @@ function isCommandError(value: unknown): value is CommandError {
   );
 }
 
-function selectionKey(selection: RFSelection, frequencies: FrequencyRecord[]): string | null {
-  if (selection.kind !== 'profile') return null;
-  const frequency = frequencies[selection.index];
-  return frequency ? rfProfileKey(frequency) : null;
-}
-
-function operationFrequency(
-  norad: number,
-  rf: NonNullable<OperationIntentV1['rf']>,
-): FrequencyRecord {
-  return {
-    noradId: norad,
-    uplinkLowHz: null,
-    uplinkHighHz: null,
-    downlinkLowHz: rf.frequencyHz,
-    downlinkHighHz: rf.frequencyHz,
-    mode: rf.mode,
-    description: rf.label,
-    status: null,
-    updatedAt: null,
-  };
-}
-
-interface ResolvedRf {
-  frequencies: FrequencyRecord[];
-  selection: RFSelection;
-  warning: string | null;
-}
-
-function resolveRfPreference(
-  norad: number,
-  available: FrequencyRecord[],
-  rfKey: string | null,
-  legacyRfIndex: number | null,
-  operationRf: OperationIntentV1['rf'],
-): ResolvedRf {
-  if (operationRf !== null) {
-    if (operationRf.profileKey !== null) {
-      const index = findRfProfileIndex(operationRf.profileKey, available);
-      return index >= 0
-        ? { frequencies: available, selection: { kind: 'profile', index }, warning: null }
-        : {
-            frequencies: available,
-            selection: { kind: 'none' },
-            warning:
-              'The requested RF profile is no longer available. Select an RF profile again.',
-          };
-    }
-    const frequencies = [...available, operationFrequency(norad, operationRf)];
-    return {
-      frequencies,
-      selection: { kind: 'profile', index: frequencies.length - 1 },
-      warning: null,
-    };
-  }
-
-  if (rfKey !== null) {
-    const index = findRfProfileIndex(rfKey, available);
-    return index >= 0
-      ? { frequencies: available, selection: { kind: 'profile', index }, warning: null }
-      : {
-          frequencies: available,
-          selection: { kind: 'none' },
-          warning: 'The requested RF profile is no longer available. Select an RF profile again.',
-        };
-  }
-
-  if (legacyRfIndex !== null) {
-    return available[legacyRfIndex]
-      ? {
-          frequencies: available,
-          selection: { kind: 'profile', index: legacyRfIndex },
-          warning: null,
-        }
-      : {
-          frequencies: available,
-          selection: { kind: 'none' },
-          warning: 'The saved RF profile is no longer available. Select an RF profile again.',
-        };
-  }
-
-  return available.length === 1
-    ? { frequencies: available, selection: { kind: 'profile', index: 0 }, warning: null }
-    : { frequencies: available, selection: { kind: 'none' }, warning: null };
-}
 
 function passClock(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

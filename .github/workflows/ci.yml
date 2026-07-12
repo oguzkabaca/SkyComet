@@ -42,7 +42,7 @@ jobs:
         run: cargo build
 
   frontend:
-    name: Frontend (typecheck, lint, build)
+    name: Frontend (typecheck, lint, test, build)
     runs-on: windows-latest
     defaults:
       run:
@@ -66,6 +66,9 @@ jobs:
 
       - name: eslint
         run: npm run lint
+
+      - name: vitest
+        run: npm test
 
       - name: vite build
         run: npm run build
