@@ -1,4 +1,4 @@
-use rusqlite::params;
+use rusqlite::{params, Transaction};
 
 use super::{
     SpaceWeatherError, SpaceWeatherForecastInput, SpaceWeatherForecastRow,
@@ -12,38 +12,7 @@ pub fn upsert_snapshots(
 ) -> Result<usize, SpaceWeatherError> {
     let count = db.with_conn(|conn| {
         let tx = conn.unchecked_transaction()?;
-        {
-            let mut stmt = tx.prepare(
-                "INSERT INTO space_weather_snapshots (
-                    source, observed_at, kp_index, a_index, solar_flux,
-                    geomagnetic_scale, radiation_scale, radio_blackout_scale,
-                    summary, fetched_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-                 ON CONFLICT(source, observed_at) DO UPDATE SET
-                    kp_index = excluded.kp_index,
-                    a_index = excluded.a_index,
-                    solar_flux = excluded.solar_flux,
-                    geomagnetic_scale = excluded.geomagnetic_scale,
-                    radiation_scale = excluded.radiation_scale,
-                    radio_blackout_scale = excluded.radio_blackout_scale,
-                    summary = excluded.summary,
-                    fetched_at = excluded.fetched_at",
-            )?;
-            for r in records {
-                stmt.execute(params![
-                    r.source,
-                    r.observed_at,
-                    r.kp_index,
-                    r.a_index,
-                    r.solar_flux,
-                    r.geomagnetic_scale,
-                    r.radiation_scale,
-                    r.radio_blackout_scale,
-                    r.summary,
-                    r.fetched_at,
-                ])?;
-            }
-        }
+        upsert_snapshots_in_transaction(&tx, records)?;
         tx.commit()?;
         Ok(records.len())
     })?;
@@ -56,35 +25,95 @@ pub fn upsert_forecasts(
 ) -> Result<usize, SpaceWeatherError> {
     let count = db.with_conn(|conn| {
         let tx = conn.unchecked_transaction()?;
-        {
-            let mut stmt = tx.prepare(
-                "INSERT INTO space_weather_forecasts (
-                    source, issued_at, valid_from, valid_to,
-                    kp_predicted, risk_level, summary, fetched_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-                 ON CONFLICT(source, issued_at, valid_from, valid_to) DO UPDATE SET
-                    kp_predicted = excluded.kp_predicted,
-                    risk_level = excluded.risk_level,
-                    summary = excluded.summary,
-                    fetched_at = excluded.fetched_at",
-            )?;
-            for r in records {
-                stmt.execute(params![
-                    r.source,
-                    r.issued_at,
-                    r.valid_from,
-                    r.valid_to,
-                    r.kp_predicted,
-                    r.risk_level,
-                    r.summary,
-                    r.fetched_at,
-                ])?;
-            }
-        }
+        upsert_forecasts_in_transaction(&tx, records)?;
         tx.commit()?;
         Ok(records.len())
     })?;
     Ok(count)
+}
+
+/// Apply one NOAA response as a unit. A forecast write failure must not leave
+/// newer snapshots paired with older forecasts (or the reverse).
+pub fn apply_sync(
+    db: &Database,
+    snapshots: &[SpaceWeatherSnapshotInput],
+    forecasts: &[SpaceWeatherForecastInput],
+) -> Result<(usize, usize), SpaceWeatherError> {
+    db.with_conn(|conn| {
+        let tx = conn.unchecked_transaction()?;
+        upsert_snapshots_in_transaction(&tx, snapshots)?;
+        upsert_forecasts_in_transaction(&tx, forecasts)?;
+        tx.commit()?;
+        Ok((snapshots.len(), forecasts.len()))
+    })
+    .map_err(Into::into)
+}
+
+fn upsert_snapshots_in_transaction(
+    tx: &Transaction<'_>,
+    records: &[SpaceWeatherSnapshotInput],
+) -> Result<(), rusqlite::Error> {
+    let mut stmt = tx.prepare(
+        "INSERT INTO space_weather_snapshots (
+            source, observed_at, kp_index, a_index, solar_flux,
+            geomagnetic_scale, radiation_scale, radio_blackout_scale,
+            summary, fetched_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+         ON CONFLICT(source, observed_at) DO UPDATE SET
+            kp_index = excluded.kp_index,
+            a_index = excluded.a_index,
+            solar_flux = excluded.solar_flux,
+            geomagnetic_scale = excluded.geomagnetic_scale,
+            radiation_scale = excluded.radiation_scale,
+            radio_blackout_scale = excluded.radio_blackout_scale,
+            summary = excluded.summary,
+            fetched_at = excluded.fetched_at",
+    )?;
+    for record in records {
+        stmt.execute(params![
+            record.source,
+            record.observed_at,
+            record.kp_index,
+            record.a_index,
+            record.solar_flux,
+            record.geomagnetic_scale,
+            record.radiation_scale,
+            record.radio_blackout_scale,
+            record.summary,
+            record.fetched_at,
+        ])?;
+    }
+    Ok(())
+}
+
+fn upsert_forecasts_in_transaction(
+    tx: &Transaction<'_>,
+    records: &[SpaceWeatherForecastInput],
+) -> Result<(), rusqlite::Error> {
+    let mut stmt = tx.prepare(
+        "INSERT INTO space_weather_forecasts (
+            source, issued_at, valid_from, valid_to,
+            kp_predicted, risk_level, summary, fetched_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(source, issued_at, valid_from, valid_to) DO UPDATE SET
+            kp_predicted = excluded.kp_predicted,
+            risk_level = excluded.risk_level,
+            summary = excluded.summary,
+            fetched_at = excluded.fetched_at",
+    )?;
+    for record in records {
+        stmt.execute(params![
+            record.source,
+            record.issued_at,
+            record.valid_from,
+            record.valid_to,
+            record.kp_predicted,
+            record.risk_level,
+            record.summary,
+            record.fetched_at,
+        ])?;
+    }
+    Ok(())
 }
 
 pub fn latest_snapshot(
@@ -225,5 +254,39 @@ mod tests {
 
         assert_eq!(count, 1);
         assert_eq!(risk, "G3");
+    }
+
+    #[test]
+    fn apply_sync_rolls_back_both_datasets_on_failure() {
+        let db = fresh_db();
+        db.with_conn(|conn| {
+            conn.execute_batch(
+                "CREATE TRIGGER reject_forecast
+                 BEFORE INSERT ON space_weather_forecasts
+                 BEGIN
+                    SELECT RAISE(ABORT, 'forecast rejected');
+                 END;",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+        let result = apply_sync(
+            &db,
+            &[snapshot("2026-05-28T09:00:00Z", 2.0, "new")],
+            &[forecast("2026-05-28T00:00:00Z", "G1")],
+        );
+        assert!(result.is_err());
+
+        let snapshot_count: i64 = db
+            .with_conn(|conn| {
+                Ok(
+                    conn.query_row("SELECT COUNT(*) FROM space_weather_snapshots", [], |row| {
+                        row.get(0)
+                    })?,
+                )
+            })
+            .unwrap();
+        assert_eq!(snapshot_count, 0);
     }
 }

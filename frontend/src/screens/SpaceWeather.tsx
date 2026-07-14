@@ -7,6 +7,7 @@ import {
   type SpaceWeatherLevel,
   type SpaceWeatherRisk,
 } from '../lib/ipc/commands';
+import { onDataRefresh } from '../lib/ipc/events';
 import { Button } from '../components/Button';
 import { ScreenFrame, ScreenPanel } from '../components/ScreenFrame';
 import { StatusLine } from '../components/StatusLine';
@@ -66,8 +67,10 @@ function formatLocal(iso: string | null): string {
 export function SpaceWeather() {
   const [risk, setRisk] = useState<SpaceWeatherRisk | null>(null);
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [manualSyncing, setManualSyncing] = useState(false);
+  const [refreshEventsInFlight, setRefreshEventsInFlight] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const syncing = manualSyncing || refreshEventsInFlight > 0;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,21 +87,55 @@ export function SpaceWeather() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const r = await getSpaceWeatherRisk();
-        if (!cancelled) setRisk(r);
-      } catch (err: unknown) {
+    let unlisten: (() => void) | undefined;
+    void onDataRefresh((event) => {
+          if (cancelled || event.dataset !== 'space_weather') return;
+          if (event.phase === 'started') {
+            setRefreshEventsInFlight((count) => count + 1);
+            return;
+          }
+          setRefreshEventsInFlight((count) => Math.max(0, count - 1));
+          if (event.phase === 'completed') {
+            void getSpaceWeatherRisk()
+              .then((refreshed) => {
+                if (!cancelled) {
+                  setRisk(refreshed);
+                  setError(null);
+                }
+              })
+              .catch((err: unknown) => {
+                if (!cancelled) setError(errMsg(err));
+              });
+          } else if (event.phase === 'failed') {
+            setError(event.message ?? 'Automatic space-weather refresh failed.');
+          }
+        })
+      .then((registered) => {
+        if (cancelled) {
+          registered();
+          return;
+        }
+        unlisten = registered;
+      })
+      .catch((err: unknown) => {
+        console.error('Failed to register space-weather refresh listener', err);
+      });
+
+    void getSpaceWeatherRisk()
+      .then((current) => {
+        if (!cancelled) setRisk(current);
+      })
+      .catch((err: unknown) => {
         if (!cancelled) setError(errMsg(err));
-      }
-    })();
+      });
     return () => {
       cancelled = true;
+      unlisten?.();
     };
   }, []);
 
   const handleSync = useCallback(async () => {
-    setSyncing(true);
+    setManualSyncing(true);
     setError(null);
     try {
       const r = await syncSpaceWeather();
@@ -107,7 +144,7 @@ export function SpaceWeather() {
       // Lands here when the network is down; the UI keeps existing data, no crash.
       setError(errMsg(err));
     } finally {
-      setSyncing(false);
+      setManualSyncing(false);
     }
   }, []);
 
@@ -138,6 +175,12 @@ export function SpaceWeather() {
       {error && (
         <StatusLine tone="error" role="alert">
           {error}
+        </StatusLine>
+      )}
+
+      {!error && risk?.lastError && (
+        <StatusLine tone="error" role="alert">
+          Last update attempt failed: {risk.lastError}
         </StatusLine>
       )}
 
@@ -177,6 +220,10 @@ export function SpaceWeather() {
             <div>
               <dt>Last sync</dt>
               <dd>{formatLocal(risk.lastSyncedAt)}</dd>
+            </div>
+            <div>
+              <dt>Last attempt</dt>
+              <dd>{formatLocal(risk.lastAttemptedAt)}</dd>
             </div>
           </dl>
 

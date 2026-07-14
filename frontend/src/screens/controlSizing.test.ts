@@ -70,7 +70,8 @@ describe('screen control states', () => {
     expect(html).toContain('aria-label="Catalog scope"');
     expect(html).toContain('Sync now');
     expect(html).toContain('aria-live="polite"');
-    expect(html).toContain('Last sync never');
+    expect(html).toContain('checking…');
+    expect(html).not.toContain('fresh');
   });
 
   it('keeps Space Weather refresh and sync actions in the same state', () => {

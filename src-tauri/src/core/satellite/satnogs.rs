@@ -26,6 +26,12 @@ const BACKOFF_MAX_RETRIES: u32 = 5;
 /// would download the same payload again.
 const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
+/// Full-dump completeness floor. The provider has remained around 2,700
+/// satellites / 4,900 transmitters; a response below these conservative
+/// bounds is more likely truncated or schema-broken than a real global purge.
+const CATALOG_MIN_SATELLITE_RECORDS: usize = 1_000;
+const CATALOG_MIN_FREQUENCY_RECORDS: usize = 1_000;
+
 #[derive(Debug, Clone)]
 pub struct CatalogFetch {
     pub satellites: Vec<SatelliteRecord>,
@@ -52,10 +58,30 @@ pub async fn fetch_all() -> Result<CatalogFetch, CatalogError> {
         .into_iter()
         .filter_map(RawTransmitter::normalize)
         .collect();
-    Ok(CatalogFetch {
+    validate_catalog_fetch(CatalogFetch {
         satellites,
         frequencies,
     })
+}
+
+fn validate_catalog_fetch(fetch: CatalogFetch) -> Result<CatalogFetch, CatalogError> {
+    if fetch.satellites.len() < CATALOG_MIN_SATELLITE_RECORDS {
+        return Err(CatalogError::Parse(
+            format!(
+                "SatNOGS response contained only {} usable satellites; expected at least {CATALOG_MIN_SATELLITE_RECORDS}",
+                fetch.satellites.len()
+            ),
+        ));
+    }
+    if fetch.frequencies.len() < CATALOG_MIN_FREQUENCY_RECORDS {
+        return Err(CatalogError::Parse(
+            format!(
+                "SatNOGS response contained only {} usable transmitters; expected at least {CATALOG_MIN_FREQUENCY_RECORDS}",
+                fetch.frequencies.len()
+            ),
+        ));
+    }
+    Ok(fetch)
 }
 
 async fn fetch_with_backoff<T: for<'de> Deserialize<'de>>(
@@ -274,5 +300,63 @@ mod tests {
         let r: Result<Vec<RawSatellite>, _> =
             try_fetch(&client, "https://invalid.invalid.skycomet.test/").await;
         assert!(matches!(r, Err(FetchAttempt::Retryable(_))));
+    }
+
+    #[test]
+    fn catalog_fetch_rejects_zero_usable_records() {
+        let empty = validate_catalog_fetch(CatalogFetch {
+            satellites: Vec::new(),
+            frequencies: Vec::new(),
+        });
+        assert!(matches!(empty, Err(CatalogError::Parse(_))));
+
+        let satellite_only = validate_catalog_fetch(CatalogFetch {
+            satellites: vec![SatelliteRecord {
+                norad_id: 25544,
+                name: "ISS".to_owned(),
+                status: Some("alive".to_owned()),
+                launched: None,
+                deployed: None,
+                decayed: None,
+                operator: None,
+                countries: None,
+                satnogs_id: None,
+                updated_at: None,
+            }],
+            frequencies: Vec::new(),
+        });
+        assert!(matches!(satellite_only, Err(CatalogError::Parse(_))));
+    }
+
+    #[test]
+    fn catalog_fetch_accepts_completeness_floor() {
+        let satellite = SatelliteRecord {
+            norad_id: 25544,
+            name: "ISS".to_owned(),
+            status: Some("alive".to_owned()),
+            launched: None,
+            deployed: None,
+            decayed: None,
+            operator: None,
+            countries: None,
+            satnogs_id: None,
+            updated_at: None,
+        };
+        let frequency = FrequencyRecord {
+            norad_id: 25544,
+            uplink_low_hz: None,
+            uplink_high_hz: None,
+            downlink_low_hz: Some(145_800_000),
+            downlink_high_hz: None,
+            mode: Some("FM".to_owned()),
+            description: None,
+            status: Some("active".to_owned()),
+            updated_at: None,
+        };
+        let result = validate_catalog_fetch(CatalogFetch {
+            satellites: vec![satellite; CATALOG_MIN_SATELLITE_RECORDS],
+            frequencies: vec![frequency; CATALOG_MIN_FREQUENCY_RECORDS],
+        });
+        assert!(result.is_ok());
     }
 }

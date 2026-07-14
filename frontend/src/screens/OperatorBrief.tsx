@@ -64,6 +64,26 @@ function formatDuration(sec: number): string {
   return r === 0 ? `${m} min` : `${m} min ${r} s`;
 }
 
+function formatBriefSpaceWeather(
+  riskCode: Brief['riskCode'],
+  stale: boolean,
+): string {
+  if (!stale) return riskCode;
+  return riskCode === 'UNKNOWN'
+    ? 'Unknown (stale)'
+    : `Unknown (stale; last reported ${riskCode})`;
+}
+
+export function BriefSpaceWeatherValue({
+  riskCode,
+  stale,
+}: {
+  riskCode: Brief['riskCode'];
+  stale: boolean;
+}) {
+  return <>{formatBriefSpaceWeather(riskCode, stale)}</>;
+}
+
 export function OperatorBrief() {
   const [satellites, setSatellites] = useState<SatelliteSummary[]>([]);
   const [norad, setNorad] = useState<number | null>(null);
@@ -234,12 +254,19 @@ export function OperatorBrief() {
                 </Tag>
                 {brief.flipRecommended && <Tag tone="accent">Flip recommended</Tag>}
                 {brief.tleExpired && <Tag tone="danger">TLE expired</Tag>}
+                {brief.spaceWeatherStale && <Tag tone="warn">Space weather stale</Tag>}
               </span>
             </div>
             {brief.tleExpired && (
               <StatusLine tone="error">
                 The TLE for this satellite is older than 7 days — pass timing and pointing are
                 untrustworthy, so the score is forced to 0. Sync TLEs from the Catalog screen.
+              </StatusLine>
+            )}
+            {brief.spaceWeatherStale && (
+              <StatusLine>
+                Space-weather data is stale or unavailable. The score uses Unknown rather than
+                treating the last reported risk as current.
               </StatusLine>
             )}
             {brief.flipRecommended && (
@@ -262,7 +289,12 @@ export function OperatorBrief() {
                   ? 'no frequency given'
                   : `${brief.marginDb.toFixed(1)} dB`}
               </StatRow>
-              <StatRow label="Space weather">{brief.riskCode}</StatRow>
+              <StatRow label="Space weather" mono={false}>
+                <BriefSpaceWeatherValue
+                  riskCode={brief.riskCode}
+                  stale={brief.spaceWeatherStale}
+                />
+              </StatRow>
               <StatRow label="Rotor" mono={false}>
                 {brief.rotorName}
               </StatRow>

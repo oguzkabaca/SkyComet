@@ -17,15 +17,19 @@ import {
   syncCatalog,
   type CatalogSummary,
   type CatalogSyncEvent,
-  type CatalogSyncStatus,
   type CommandError,
   type FrequencyRecord,
   type GroundTrack,
   type Location,
   type SatelliteDetail,
 } from '../lib/ipc/commands';
-import { onCatalogSync } from '../lib/ipc/events';
+import { onCatalogSync, onDataRefresh } from '../lib/ipc/events';
 import { WorldMap } from '../viz/WorldMap';
+import {
+  getCatalogSyncViewState,
+  getTleRefreshEffect,
+  type CatalogSyncStatusState,
+} from './catalogSyncStatus';
 import styles from './SatelliteCatalog.module.css';
 
 type Tone = 'neutral' | 'ok' | 'accent' | 'warn' | 'danger';
@@ -109,9 +113,13 @@ export function SatelliteCatalog() {
   const [detailPending, setDetailPending] = useState(false);
 
   const [observer, setObserver] = useState<Location | null>(null);
-  const [syncStatus, setSyncStatus] = useState<CatalogSyncStatus | null>(null);
+  const [syncStatusState, setSyncStatusState] = useState<CatalogSyncStatusState>({
+    kind: 'loading',
+  });
   const [syncPhase, setSyncPhase] = useState<CatalogSyncEvent['phase'] | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [backgroundTleError, setBackgroundTleError] = useState<string | null>(null);
+  const [syncStatusReloadKey, setSyncStatusReloadKey] = useState(0);
 
   // Bump this counter to force a list/detail reload after a successful sync.
   const [reloadKey, setReloadKey] = useState(0);
@@ -206,15 +214,20 @@ export function SatelliteCatalog() {
     let cancelled = false;
     getCatalogSyncStatus()
       .then((s) => {
-        if (!cancelled) setSyncStatus(s);
+        if (!cancelled) setSyncStatusState({ kind: 'known', status: s });
       })
-      .catch(() => {
-        /* non-fatal */
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setSyncStatusState({
+            kind: 'error',
+            message: isCommandError(e) ? `${e.code}: ${e.message}` : String(e),
+          });
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [reloadKey, syncPhase]);
+  }, [reloadKey, syncPhase, syncStatusReloadKey]);
 
   // Subscribe to background sync events.
   useEffect(() => {
@@ -226,22 +239,66 @@ export function SatelliteCatalog() {
       if (event.phase === 'started') {
         setSyncMessage('starting…');
       } else if (event.phase === 'completed') {
-        setSyncMessage(
-          `synced ${event.satellitesWritten} satellites · ${event.frequenciesWritten} frequencies · ${event.tleWritten} TLE`,
-        );
+        const catalogSummary = `synced ${event.satellitesWritten} satellites · ${event.frequenciesWritten} frequencies`;
+        if (event.tleDeferred) {
+          const reason = event.tleError
+            ? `; last TLE attempt failed: ${event.tleError}`
+            : "; existing TLEs kept until the provider's two-hour update window";
+          setSyncMessage(`${catalogSummary} · TLE refresh deferred${reason}`);
+        } else {
+          setSyncMessage(`${catalogSummary} · ${event.tleWritten} TLE`);
+        }
         setReloadKey((k) => k + 1);
       } else if (event.phase === 'skipped') {
         setSyncMessage(`skipped (last synced ${formatTimeAgo(event.lastSyncedAt)})`);
       } else if (event.phase === 'failed') {
         setSyncMessage(`${event.code}: ${event.message}`);
       }
-    }).then((u) => {
-      if (cancelled) {
-        u();
-      } else {
-        unlisten = u;
+    })
+      .then((u) => {
+        if (cancelled) {
+          u();
+        } else {
+          unlisten = u;
+        }
+      })
+      .catch((e: unknown) => {
+        console.error('Failed to register catalog sync listener', e);
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // A background TLE refresh changes ground-track geometry even when the
+  // SatNOGS catalog itself did not run.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void onDataRefresh((event) => {
+      if (cancelled) return;
+      const effect = getTleRefreshEffect(event);
+      if (!effect) return;
+      if (effect.refreshStatus) {
+        setSyncStatusReloadKey((key) => key + 1);
       }
-    });
+      if (effect.refreshGeometry) {
+        setReloadKey((key) => key + 1);
+      }
+      if (effect.errorMessage) {
+        setBackgroundTleError(effect.errorMessage);
+      } else if (effect.clearsError) {
+        setBackgroundTleError(null);
+      }
+    })
+      .then((registered) => {
+        if (cancelled) registered();
+        else unlisten = registered;
+      })
+      .catch((e: unknown) => {
+        console.error('Failed to register catalog TLE listener', e);
+      });
     return () => {
       cancelled = true;
       unlisten?.();
@@ -260,10 +317,21 @@ export function SatelliteCatalog() {
   const onSync = () => {
     setSyncMessage('starting…');
     setSyncPhase('started');
-    syncCatalog(true).catch((e: unknown) => {
-      setSyncPhase('failed');
-      setSyncMessage(isCommandError(e) ? `${e.code}: ${e.message}` : String(e));
-    });
+    void syncCatalog(true)
+      .then(() => {
+        setReloadKey((key) => key + 1);
+        setSyncPhase((phase) => (phase === 'started' ? null : phase));
+        setSyncMessage((message) => (message === 'starting…' ? 'sync completed' : message));
+      })
+      .catch((e: unknown) => {
+        setSyncPhase('failed');
+        setSyncMessage(isCommandError(e) ? `${e.code}: ${e.message}` : String(e));
+      });
+  };
+
+  const retrySyncStatus = () => {
+    setSyncStatusState({ kind: 'loading' });
+    setSyncStatusReloadKey((key) => key + 1);
   };
 
   const isSearching = debouncedQuery.trim() !== '';
@@ -272,19 +340,19 @@ export function SatelliteCatalog() {
   const canPrev = !isSearching && page > 0;
   const canNext = !isSearching && visibleRows.length === PAGE_SIZE;
   const syncing = syncPhase === 'started';
-
-  let syncBadgeText = 'fresh';
-  let syncBadgeTone: Tone = 'ok';
-  if (syncPhase === 'started') {
-    syncBadgeText = 'syncing…';
-    syncBadgeTone = 'accent';
-  } else if (syncPhase === 'failed') {
-    syncBadgeText = 'sync failed';
-    syncBadgeTone = 'danger';
-  } else if (syncStatus?.isStale) {
-    syncBadgeText = 'stale';
-    syncBadgeTone = 'danger';
-  }
+  const syncView = getCatalogSyncViewState(syncStatusState, syncPhase);
+  const lastSyncText =
+    syncView.lastSync.kind === 'loading'
+      ? 'checking…'
+      : syncView.lastSync.kind === 'unknown'
+        ? 'unknown'
+        : formatTimeAgo(syncView.lastSync.lastSyncedAt);
+  const tleStatus = syncStatusState.kind === 'known' ? syncStatusState.status : null;
+  const tleLastSyncText = formatTimeAgo(tleStatus?.tleLastSyncedAt ?? null);
+  const tleLastError = tleStatus?.tleLastError ?? null;
+  const tleDisplayError =
+    backgroundTleError ??
+    (tleLastError ? `Last TLE update attempt failed: ${tleLastError}` : null);
 
   return (
     <ScreenFrame>
@@ -306,15 +374,17 @@ export function SatelliteCatalog() {
         <Button className={styles.syncButton} variant="primary" onClick={onSync} disabled={syncing}>
           {syncing ? 'Syncing…' : 'Sync now'}
         </Button>
+        {syncView.canRetryStatus && <Button onClick={retrySyncStatus}>Retry status</Button>}
         <div className={styles.syncState} aria-live="polite">
-          <Tag tone={syncBadgeTone}>{syncBadgeText}</Tag>
+          <Tag tone={syncView.badgeTone}>{syncView.badgeText}</Tag>
           <span className={styles.meta}>
-            Last sync {formatTimeAgo(syncStatus?.lastSyncedAt ?? null)}
+            Last sync {lastSyncText}
           </span>
+          <span className={styles.meta}>TLE last sync {tleLastSyncText}</span>
         </div>
       </div>
 
-      {(error || (syncMessage && !syncing)) && (
+      {(error || syncView.statusError || tleDisplayError || (syncMessage && !syncing)) && (
         <div className={styles.alerts}>
           {error && (
             <StatusLine tone="error" role="alert">
@@ -327,6 +397,17 @@ export function SatelliteCatalog() {
               role={syncPhase === 'failed' ? 'alert' : 'status'}
             >
               {syncMessage}
+            </StatusLine>
+          )}
+          {syncView.statusError && (
+            <StatusLine tone="error" role="alert">
+              Catalog freshness is unknown: {syncView.statusError}. Retry the status check or use
+              Sync now.
+            </StatusLine>
+          )}
+          {tleDisplayError && (
+            <StatusLine tone="error" role="alert">
+              {tleDisplayError}. Stored elements remain available.
             </StatusLine>
           )}
         </div>

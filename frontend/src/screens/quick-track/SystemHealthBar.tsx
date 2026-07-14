@@ -2,7 +2,7 @@ import { ROTOR_ENABLED } from '../../lib/features';
 import styles from './SystemHealthBar.module.css';
 
 /** Display threshold above which a TLE is flagged stale in the health bar. */
-const TLE_STALE_HOURS = 72;
+const TLE_STALE_HOURS = 24;
 /** Tracking loop cadence (lib.rs TICK_INTERVAL = 500 ms → 2 Hz). */
 const POSITION_HZ = 2;
 

@@ -4,7 +4,7 @@
 //! (catalog search). Keep SQL here aligned with those sections — if the
 //! canon changes, this file must change in the same commit.
 
-use rusqlite::params;
+use rusqlite::{params, Transaction};
 
 use super::{CatalogError, FrequencyRecord, SatelliteDetail, SatelliteRecord, SatelliteSummary};
 use crate::core::db::Database;
@@ -18,38 +18,7 @@ pub fn upsert_satellites(
 ) -> Result<usize, CatalogError> {
     let count = db.with_conn(|conn| {
         let tx = conn.unchecked_transaction()?;
-        {
-            let mut stmt = tx.prepare(
-                "INSERT INTO satellites
-                    (norad_id, name, status, launched, deployed, decayed,
-                     operator, countries, satnogs_id, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-                 ON CONFLICT(norad_id) DO UPDATE SET
-                     name       = excluded.name,
-                     status     = excluded.status,
-                     launched   = excluded.launched,
-                     deployed   = excluded.deployed,
-                     decayed    = excluded.decayed,
-                     operator   = excluded.operator,
-                     countries  = excluded.countries,
-                     satnogs_id = excluded.satnogs_id,
-                     updated_at = excluded.updated_at",
-            )?;
-            for r in records {
-                stmt.execute(params![
-                    r.norad_id,
-                    r.name,
-                    r.status,
-                    r.launched,
-                    r.deployed,
-                    r.decayed,
-                    r.operator,
-                    r.countries,
-                    r.satnogs_id,
-                    r.updated_at,
-                ])?;
-            }
-        }
+        upsert_satellites_in_transaction(&tx, records)?;
         tx.commit()?;
         Ok(records.len())
     })?;
@@ -65,39 +34,101 @@ pub fn replace_frequencies(
 ) -> Result<usize, CatalogError> {
     let count = db.with_conn(|conn| {
         let tx = conn.unchecked_transaction()?;
-        {
-            let mut clear = tx.prepare("DELETE FROM satellite_frequencies WHERE norad_id = ?1")?;
-            let mut seen = std::collections::HashSet::<u32>::new();
-            for r in records {
-                if seen.insert(r.norad_id) {
-                    clear.execute(params![r.norad_id])?;
-                }
-            }
-            let mut stmt = tx.prepare(
-                "INSERT INTO satellite_frequencies
-                    (norad_id, uplink_low_hz, uplink_high_hz,
-                     downlink_low_hz, downlink_high_hz,
-                     mode, description, status, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            )?;
-            for r in records {
-                stmt.execute(params![
-                    r.norad_id,
-                    r.uplink_low_hz,
-                    r.uplink_high_hz,
-                    r.downlink_low_hz,
-                    r.downlink_high_hz,
-                    r.mode,
-                    r.description,
-                    r.status,
-                    r.updated_at,
-                ])?;
-            }
-        }
+        replace_frequencies_in_transaction(&tx, records)?;
         tx.commit()?;
         Ok(records.len())
     })?;
     Ok(count)
+}
+
+/// Apply one SatNOGS catalog response atomically. Frequencies are replaced only
+/// for NORAD IDs present in the response; an otherwise valid but truncated JSON
+/// body must not authorize destructive deletion of absent satellites' rows.
+pub fn apply_catalog_sync(
+    db: &Database,
+    satellites: &[SatelliteRecord],
+    frequencies: &[FrequencyRecord],
+) -> Result<(usize, usize), CatalogError> {
+    db.with_conn(|conn| {
+        let tx = conn.unchecked_transaction()?;
+        upsert_satellites_in_transaction(&tx, satellites)?;
+        replace_frequencies_in_transaction(&tx, frequencies)?;
+        tx.commit()?;
+        Ok((satellites.len(), frequencies.len()))
+    })
+    .map_err(Into::into)
+}
+
+fn upsert_satellites_in_transaction(
+    tx: &Transaction<'_>,
+    records: &[SatelliteRecord],
+) -> Result<(), rusqlite::Error> {
+    let mut stmt = tx.prepare(
+        "INSERT INTO satellites
+            (norad_id, name, status, launched, deployed, decayed,
+             operator, countries, satnogs_id, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+         ON CONFLICT(norad_id) DO UPDATE SET
+             name       = excluded.name,
+             status     = excluded.status,
+             launched   = excluded.launched,
+             deployed   = excluded.deployed,
+             decayed    = excluded.decayed,
+             operator   = excluded.operator,
+             countries  = excluded.countries,
+             satnogs_id = excluded.satnogs_id,
+             updated_at = excluded.updated_at",
+    )?;
+    for record in records {
+        stmt.execute(params![
+            record.norad_id,
+            record.name,
+            record.status,
+            record.launched,
+            record.deployed,
+            record.decayed,
+            record.operator,
+            record.countries,
+            record.satnogs_id,
+            record.updated_at,
+        ])?;
+    }
+    Ok(())
+}
+
+fn replace_frequencies_in_transaction(
+    tx: &Transaction<'_>,
+    records: &[FrequencyRecord],
+) -> Result<(), rusqlite::Error> {
+    let mut clear = tx.prepare("DELETE FROM satellite_frequencies WHERE norad_id = ?1")?;
+    let mut seen = std::collections::HashSet::<u32>::new();
+    for record in records {
+        if seen.insert(record.norad_id) {
+            clear.execute(params![record.norad_id])?;
+        }
+    }
+
+    let mut stmt = tx.prepare(
+        "INSERT INTO satellite_frequencies
+            (norad_id, uplink_low_hz, uplink_high_hz,
+             downlink_low_hz, downlink_high_hz,
+             mode, description, status, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+    )?;
+    for record in records {
+        stmt.execute(params![
+            record.norad_id,
+            record.uplink_low_hz,
+            record.uplink_high_hz,
+            record.downlink_low_hz,
+            record.downlink_high_hz,
+            record.mode,
+            record.description,
+            record.status,
+            record.updated_at,
+        ])?;
+    }
+    Ok(())
 }
 
 pub fn count_satellites(db: &Database) -> Result<i64, CatalogError> {
@@ -371,6 +402,67 @@ mod tests {
         // Re-replace with a single row → old two are gone.
         replace_frequencies(&db, &[freq(25544, 145_800_000, "active")]).unwrap();
         assert_eq!(count_frequencies(&db).unwrap(), 1);
+    }
+
+    #[test]
+    fn catalog_sync_preserves_frequencies_absent_from_response() {
+        let db = fresh_db();
+        upsert_satellites(&db, &[sat(1, "ALPHA", "alive"), sat(2, "BETA", "alive")]).unwrap();
+        replace_frequencies(
+            &db,
+            &[
+                freq(1, 145_000_000, "active"),
+                freq(2, 437_000_000, "active"),
+            ],
+        )
+        .unwrap();
+
+        apply_catalog_sync(
+            &db,
+            &[sat(1, "ALPHA", "alive"), sat(2, "BETA", "alive")],
+            &[freq(1, 145_100_000, "active")],
+        )
+        .unwrap();
+
+        assert_eq!(count_frequencies(&db).unwrap(), 2);
+        assert_eq!(
+            get_with_frequencies(&db, 2)
+                .unwrap()
+                .unwrap()
+                .frequencies
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn catalog_sync_rolls_back_satellites_and_frequencies_together() {
+        let db = fresh_db();
+        upsert_satellites(&db, &[sat(1, "OLD", "alive")]).unwrap();
+        replace_frequencies(&db, &[freq(1, 145_000_000, "active")]).unwrap();
+        db.with_conn(|conn| {
+            conn.execute_batch(
+                "CREATE TRIGGER reject_catalog_frequency
+                 BEFORE INSERT ON satellite_frequencies
+                 BEGIN
+                    SELECT RAISE(ABORT, 'frequency rejected');
+                 END;",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+        let result = apply_catalog_sync(
+            &db,
+            &[sat(1, "NEW", "alive")],
+            &[freq(1, 437_000_000, "active")],
+        );
+        assert!(result.is_err());
+
+        let detail = get_with_frequencies(&db, 1).unwrap().unwrap();
+        assert_eq!(detail.satellite.name, "OLD");
+        assert_eq!(detail.frequencies.len(), 1);
+        assert_eq!(detail.frequencies[0].downlink_low_hz, Some(145_000_000));
     }
 
     #[test]

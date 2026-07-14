@@ -5,6 +5,31 @@ All notable changes to SkyComet are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Space weather now refreshes automatically at startup and while the app stays
+  open; failed attempts are visible and persisted instead of silently leaving
+  an old G-scale snapshot on screen.
+- TLE refresh follows CelesTrak's two-hour GP update cadence, validates all
+  groups before an atomic, non-destructive apply, and never advances freshness
+  on an empty, HTML or parser-rejected response. A cache-generation guard also
+  prevents an in-flight old database read from restoring stale elements after
+  a successful refresh.
+- Stale space weather is scored as unknown in Operator Brief, and TLE epochs
+  older than 24 hours are visibly warned even when the last download is recent.
+- Pass Planner's ten-minute cache is invalidated after TLE/catalog updates and
+  observer-location changes; a superseded in-flight calculation cannot restore
+  stale geometry.
+- Catalog sync-status failures and background TLE refresh failures now render
+  an explicit unknown/error state instead of being mistaken for fresh data.
+
+### Changed
+
+- Startup and periodic data checks share per-dataset single-flight guards,
+  provider-aware retry limits and persistent last-attempt/error metadata.
+
 ## [0.1.0-alpha.2] — 2026-07-13
 
 ### Fixed

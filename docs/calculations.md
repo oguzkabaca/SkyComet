@@ -695,7 +695,19 @@ operator overrides them via Settings → Profile.
 | `search_max_results` | 200 | rows | The UI table shows it comfortably without virtualization; the first 200 are shown even if more match. |
 | `search_min_query_chars` | 1 | character | Even a single character triggers filtering; practical. |
 | `catalog_stale_days` | 30 | day | Frequency + status is stable on the order of weeks; a 30-day "soft" stale threshold for a UI prompt. |
-| `tle_sync_max_age_hours` | 24 | hour | LEO elsets are republished several times a day and SGP4 position error grows fast past ~1 day. Startup auto-sync re-fetches all CelesTrak groups — synced in the order stations, weather, visual, **amateur** (`tle::fetcher::CelestrakGroup::ALL`) — when the last TLE sync — or the snapshot seed stamp — is older than this. Distinct from the UI display-stale flag (72 h, SystemHealthBar), which only warns and never fetches. Group order matters: see §7.6. |
+| `catalog_min_satellite_records` | 1000 | rows | SatNOGS full dump is ~2700 satellites; fewer than this is rejected as truncated/schema-broken. |
+| `catalog_min_frequency_records` | 1000 | rows | SatNOGS full dump is ~4900 transmitters; conservative hard completeness floor. |
+| `catalog_min_relative_percent` | 80 | percent | A full dump more than 20% below the stored baseline is rejected and cannot advance the 30-day freshness stamp. |
+| `tle_sync_max_age_hours` | 2 | hour | CelesTrak GP data is checked on the provider's two-hour publication cadence. An immediate startup check and a 15-minute in-process timer call the sync coordinator; a request occurs only when both the last attempt and last success are at least 2 h old. This is a hard provider guard, including manual Catalog sync. |
+| `tle_display_stale_hours` | 24 | hour | The health bar warns from the element's own epoch age, independently of the global fetch stamp. A successful provider request can legitimately return an element older than the request. |
+
+All four managed groups are fetched and validated before storage changes. Empty/HTML/zero-valid or
+partially rejected responses fail closed; successful batches are applied in one transaction in
+canonical order `stations, weather, visual, amateur`. Rows absent from a response are deliberately
+preserved because legacy TLE text has no trustworthy completeness marker. A newer stored epoch is
+never overwritten by an older one (timestamps compare via SQLite `julianday`, not RFC3339 text),
+and the `sync_tle_last_at` stamp advances only after commit. The caller then invalidates propagator
+and pass-schedule caches.
 
 ### 7.2 Sub-satellite point (ECEF → geodetic lat/lon)
 
@@ -994,7 +1006,7 @@ A weighted composite; each quality `q ∈ [0,1]`:
 ```
 q_el      = min(max_el / EL_REF_DEG, 1)
 q_margin  = clamp((margin_db − 0) / (MARGIN_OK_DB − 0), 0, 1)      # §6, MARGIN_OK_DB = 6
-q_wx      = {G0:1.0, G1:0.8, G2:0.6, G3:0.3, G4:0.0, G5:0.0, unknown:0.5}   # §9 risk
+q_wx      = {G0:1.0, G1:0.8, G2:0.6, G3:0.3, G4:0.0, G5:0.0, unknown:0.5}   # §9 risk; stale → unknown
 q_rotor   = {ok:1.0, slow:0.5, impossible:0.0}                     # §8.3
 q_offaxis = clamp(1 − offaxis_loss_db / OFFAXIS_REF_DB, 0, 1)      # §6.5
 
@@ -1017,8 +1029,9 @@ TLE_EXPIRED_HOURS = 168        # 7 days; core/rotor/feasibility.rs
 tle_expired = (now − tle_epoch) > TLE_EXPIRED_HOURS
 ```
 
-Rationale — the freshness ladder: 24 h auto-sync (§7.1 `tle_sync_max_age_hours`) keeps elsets
-current; 72 h is the soft UI stale warning (SystemHealthBar); at 168 h SGP4 along-track drift
+Rationale — the freshness ladder: 2 h provider-aligned auto-sync (§7.1
+`tle_sync_max_age_hours`) keeps the local set current; an individual element epoch older than 24 h
+gets a soft UI warning (SystemHealthBar); at 168 h SGP4 along-track drift
 (1–3 km/day, §4) reaches 7–20+ km and pass timing/pointing for an operator brief is no longer
 trustworthy → hard fail-safe. Wired in `get_operator_brief` from the TLE epoch; the DTO exposes
 `tle_expired` so the UI can explain a zero score.
@@ -1082,6 +1095,9 @@ dependency — the input is the last snapshot / last frame in the DB.
 | Symbol | Value | Unit | Note |
 |---|---|---|---|
 | `STALE_THRESHOLD_MINUTES` | 120 | min | If `now − observed_at` exceeds this, the snapshot is "Stale" (roadmap §F7: >2 hours). |
+| `FUTURE_TOLERANCE_MINUTES` | 5 | min | Small source/host clock skew is clamped to age 0. A farther-future observation fails safe as `Unknown` + stale and cannot suppress refresh. |
+| `SPACE_WEATHER_SYNC_MAX_AGE_HOURS` | 2 | hour | Startup and the 15-minute in-process timer refresh when the successful fetch stamp is this old. |
+| `SPACE_WEATHER_RETRY_BACKOFF_MINUTES` | 10 | min | Prevents duplicate automatic calls while still allowing the next 15-minute timer tick to recover from a transient startup outage. Manual sync bypasses this backoff. |
 | `LIVENESS_FRESH_DAYS` | 7 | day | Up to this age the liveness score ≥ 0.8 (decreases linearly to the floor). |
 | `LIVENESS_DEAD_DAYS` | 30 | day | At and beyond this age the liveness score = 0. |
 | `LIVENESS_FRESH_FLOOR` | 0.8 | — | The score is exactly this at day 7; above it between 0–7 days. |
@@ -1120,8 +1136,16 @@ age_minutes = (now − observed_at) / 60        # observed_at RFC3339, UTC
 stale       = age_minutes > STALE_THRESHOLD_MINUTES
 ```
 
-If `observed_at` cannot be parsed, or there is no snapshot, the risk returns `Unknown` + `stale = true`
-(safe side: old/unknown data is not treated as fresh).
+If `observed_at` cannot be parsed, is more than 5 minutes in the future, or there is no snapshot,
+the risk returns `Unknown` + `stale = true` (safe side: invalid/unknown data is not treated as
+fresh). The Operator Brief applies the same fail-safe: any stale space-weather snapshot is scored
+as `unknown` (`q_wx = 0.5`) and explicitly labelled stale; a cached G0 is never scored as fresh.
+
+A NOAA response is successful only when at least one usable snapshot can be formed. Scale-only and
+Kp-only snapshots are valid fallbacks, but a syntactically successful response with zero usable
+observations fails. Snapshots and forecasts from one response are committed atomically. The last
+attempt and last error are persisted separately from the last-success stamp for packaged-build
+diagnostics; success clears the error.
 
 ### 9.4 Telemetry liveness score
 
@@ -1142,9 +1166,10 @@ Continuity: at d=7 both branches give 0.8 (continuous). The score decreases mono
 - Kp 4.7 → G0 (Quiet); Kp 5.0 → G1; Kp 6.3 → G2; Kp 8.0 → G4; Kp 9.0 → G5.
 - `geomagnetic_scale = "G3"` + Kp 5.0 → level G3 (the NOAA field overrides the Kp derivation; `scale_source = noaa`).
 - observed_at = now − 119 min → `stale = false`; now − 121 min → `stale = true`.
+- observed_at = now + 4 min → age 0 / normal risk; now + 6 min → `Unknown` + `stale = true`.
 - last_frame age 0 days → liveness 1.0; 7 days → 0.8; 18.5 days → ≈0.4; 30 days → 0.0; no frame → 0.0.
 
-**Status:** active (2026-05-28). `core/space_weather/risk_model.rs` (§9.2-9.3) +
+**Status:** active (updated 2026-07-14). `core/space_weather/risk_model.rs` (§9.2-9.3) +
 `core/telemetry/decision.rs` (§9.4) follow the canon; unit tests verify the boundary values.
 
 ---
@@ -1348,6 +1373,12 @@ maximized + shown only after the React shell reports two painted frames (`comple
 
 ## Change history
 
+- 2026-07-14 — Startup data-refresh hardening: §7.1 TLE fetch cadence changed 24 h → 2 h,
+  independent element-epoch warning changed 72 h → 24 h, and provider throttle / completeness
+  floors / non-destructive atomic apply rules were canonized. §8.7 now treats stale space
+  weather as unknown for scoring. §9 gained the 5-minute future-clock tolerance, automatic
+  refresh lifecycle, zero-usable-response rejection, atomic NOAA write and persistent attempt/error
+  diagnostic contract.
 - 2026-07-12 — Canon↔core conformance audit (alpha.2): (1) §6.4 orthogonal-linear cap — code
   aligned to the canon 25 dB (was 30 dB in `loss_models.rs`); constant names in the canon now
   mirror the code; the unverifiable ITU-R BO.652 attribution dropped; arbitrary-Δθ formula
