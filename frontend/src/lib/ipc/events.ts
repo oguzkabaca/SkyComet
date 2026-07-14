@@ -27,6 +27,16 @@ export interface TrackingErrorPayload {
   message: string;
 }
 
+export type DataRefreshDataset = 'catalog' | 'telemetry' | 'space_weather' | 'tle';
+export type DataRefreshPhase = 'started' | 'completed' | 'skipped' | 'deferred' | 'failed';
+
+export interface DataRefreshEvent {
+  dataset: DataRefreshDataset;
+  phase: DataRefreshPhase;
+  timestamp: string;
+  message: string | null;
+}
+
 export async function onTrackingUpdate(
   callback: (snapshot: TrackingSnapshot) => void,
 ): Promise<UnlistenFn> {
@@ -43,4 +53,14 @@ export async function onCatalogSync(
   callback: (event: CatalogSyncEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<CatalogSyncEvent>('catalog_sync', (event) => callback(event.payload));
+}
+
+export async function onDataRefresh(
+  callback: (event: DataRefreshEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<DataRefreshEvent>('data_refresh', (event) => callback(event.payload));
+}
+
+export async function onLocationChanged(callback: () => void): Promise<UnlistenFn> {
+  return listen('location_changed', callback);
 }

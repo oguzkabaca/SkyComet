@@ -19,7 +19,7 @@ use crate::core::db::Database;
 use crate::core::orbit::ground_track::{self, params as gt_params, GroundTrackSample};
 use crate::core::orbit::sgp4_engine::Propagator;
 use crate::core::satellite::{self, FrequencyRecord, SatelliteDetail, SatelliteRecord};
-use crate::core::sync::{self, Dataset, SyncOutcome};
+use crate::core::sync::{self, Dataset, SyncCoordinator, SyncOutcome};
 use crate::core::tle::cache::TleCache;
 use crate::core::tle::fetcher::DEFAULT_AMATEUR_ONLY;
 
@@ -138,6 +138,9 @@ pub struct CatalogSyncStatusDto {
     pub last_synced_at: Option<String>,
     pub is_stale: bool,
     pub stale_after_days: i64,
+    pub tle_last_synced_at: Option<String>,
+    pub tle_last_attempted_at: Option<String>,
+    pub tle_last_error: Option<String>,
 }
 
 /// Tagged enum for the `catalog_sync` event channel.
@@ -159,6 +162,10 @@ pub enum CatalogSyncEvent {
         frequencies_written: usize,
         #[serde(rename = "tleWritten")]
         tle_written: usize,
+        #[serde(rename = "tleDeferred")]
+        tle_deferred: bool,
+        #[serde(rename = "tleError")]
+        tle_error: Option<String>,
     },
     Skipped {
         #[serde(rename = "lastSyncedAt")]
@@ -250,16 +257,20 @@ pub fn get_catalog_sync_status(
     let max_age = ChronoDuration::days(CATALOG_STALE_DAYS);
     let last = sync::last_synced_at(db.inner(), Dataset::Catalog).map_err(map_sync_err)?;
     let stale = sync::is_stale(db.inner(), Dataset::Catalog, max_age).map_err(map_sync_err)?;
+    let tle_status = sync::sync_status(db.inner(), Dataset::Tle).map_err(map_sync_err)?;
     Ok(CatalogSyncStatusDto {
         last_synced_at: last.map(|dt| dt.to_rfc3339()),
         is_stale: stale,
         stale_after_days: CATALOG_STALE_DAYS,
+        tle_last_synced_at: tle_status.last_synced_at.map(|dt| dt.to_rfc3339()),
+        tle_last_attempted_at: tle_status.last_attempted_at.map(|dt| dt.to_rfc3339()),
+        tle_last_error: tle_status.last_error,
     })
 }
 
-/// Spawn a background catalog sync. Emits `catalog_sync` events with
-/// `phase`: `started` / `completed` / `skipped` / `failed`. Forces a
-/// fetch (max_age=0) so "Sync now" buttons don't get skipped.
+/// Run the catalog sync asynchronously and emit `catalog_sync` lifecycle
+/// events. Manual catalog refresh bypasses catalog freshness; its TLE leg
+/// still obeys CelesTrak's hard two-hour provider cadence.
 ///
 /// A performed catalog sync is followed by a forced TLE sync — "Sync now"
 /// means "refresh everything the tracker depends on", and stale elsets
@@ -267,29 +278,39 @@ pub fn get_catalog_sync_status(
 /// catalog write surfaces as `failed` (the catalog rows stay; retry is
 /// cheap and idempotent).
 #[tauri::command]
-pub fn sync_catalog(
+pub async fn sync_catalog(
     app: AppHandle,
     db: State<'_, Database>,
     cache: State<'_, Arc<TleCache>>,
+    coordinator: State<'_, Arc<SyncCoordinator>>,
     force: Option<bool>,
 ) -> Result<(), CommandError> {
     let db = db.inner().clone();
     let cache = Arc::clone(cache.inner());
-    let max_age = if force.unwrap_or(true) {
-        ChronoDuration::zero()
+    let coordinator = Arc::clone(coordinator.inner());
+    let force = force.unwrap_or(true);
+    emit_event(&app, CatalogSyncEvent::Started);
+    let catalog_result = if force {
+        sync::force_sync(&db, coordinator.as_ref(), Dataset::Catalog).await
     } else {
-        ChronoDuration::days(CATALOG_STALE_DAYS)
+        sync::sync_if_needed(
+            &db,
+            coordinator.as_ref(),
+            Dataset::Catalog,
+            ChronoDuration::days(CATALOG_STALE_DAYS),
+        )
+        .await
     };
-    tauri::async_runtime::spawn(async move {
-        emit_event(&app, CatalogSyncEvent::Started);
-        match sync::sync_if_needed(&db, Dataset::Catalog, max_age).await {
-            Ok(SyncOutcome::Performed {
-                fetched_at,
-                satellites_written,
-                frequencies_written,
-                ..
-            }) => {
-                let tle_written = match sync::force_sync(&db, Dataset::Tle).await {
+    match catalog_result {
+        Ok(SyncOutcome::Performed {
+            fetched_at,
+            satellites_written,
+            frequencies_written,
+            ..
+        }) => {
+            crate::emit_data_refresh(&app, Dataset::Tle, "started", None);
+            let (tle_written, tle_deferred, tle_error) =
+                match sync::force_sync(&db, coordinator.as_ref(), Dataset::Tle).await {
                     Ok(SyncOutcome::TlePerformed {
                         tle_written,
                         tle_skipped,
@@ -298,78 +319,116 @@ pub fn sync_catalog(
                         if tle_skipped > 0 {
                             tracing::warn!(tle_skipped, "TLE sync skipped unparseable elsets");
                         }
-                        tle_written
+                        crate::emit_data_refresh(&app, Dataset::Tle, "completed", None);
+                        (tle_written, false, None)
+                    }
+                    Ok(SyncOutcome::Skipped { .. }) => {
+                        crate::emit_data_refresh(&app, Dataset::Tle, "skipped", None);
+                        (0, false, None)
+                    }
+                    Ok(SyncOutcome::Deferred { .. }) => {
+                        crate::emit_data_refresh(&app, Dataset::Tle, "deferred", None);
+                        let last_error = sync::sync_status(&db, Dataset::Tle)
+                            .ok()
+                            .and_then(|status| status.last_error);
+                        (0, true, last_error)
                     }
                     Ok(other) => {
                         tracing::warn!(?other, "unexpected outcome from TLE sync");
-                        0
-                    }
-                    Err(e) => {
-                        let mapped = map_sync_err(e);
+                        let error = CommandError {
+                            code: "unexpected_sync_outcome".to_owned(),
+                            message: "catalog updated, but TLE sync returned an unexpected outcome"
+                                .to_owned(),
+                        };
+                        crate::emit_data_refresh(
+                            &app,
+                            Dataset::Tle,
+                            "failed",
+                            Some(error.message.clone()),
+                        );
                         emit_event(
                             &app,
                             CatalogSyncEvent::Failed {
-                                code: mapped.code,
-                                message: format!(
-                                    "catalog updated, TLE refresh failed: {}",
-                                    mapped.message
-                                ),
+                                code: error.code.clone(),
+                                message: error.message.clone(),
                             },
                         );
-                        // Catalog rows were rewritten even though the TLE leg
-                        // failed — the cache must still drop stale entries.
-                        cache.invalidate_all();
-                        return;
+                        return Err(error);
+                    }
+                    Err(e) => {
+                        crate::emit_data_refresh(&app, Dataset::Tle, "failed", Some(e.to_string()));
+                        let mapped = map_sync_err(e);
+                        let error = CommandError {
+                            code: mapped.code,
+                            message: format!(
+                                "catalog updated, TLE refresh failed: {}",
+                                mapped.message
+                            ),
+                        };
+                        emit_event(
+                            &app,
+                            CatalogSyncEvent::Failed {
+                                code: error.code.clone(),
+                                message: error.message.clone(),
+                            },
+                        );
+                        return Err(error);
                     }
                 };
-                // Catalog + TLE source rows were just rewritten. Drop
-                // everything; lazy reload picks fresh data.
+            if tle_written > 0 {
+                // TLE source rows were rewritten. Lazy reload picks up the
+                // fresh generation on the next tracking calculation.
                 cache.invalidate_all();
-                emit_event(
-                    &app,
-                    CatalogSyncEvent::Completed {
-                        fetched_at: fetched_at.to_rfc3339(),
-                        satellites_written,
-                        frequencies_written,
-                        tle_written,
-                    },
-                );
             }
-            Ok(SyncOutcome::Skipped { last_synced_at, .. }) => {
-                emit_event(
-                    &app,
-                    CatalogSyncEvent::Skipped {
-                        last_synced_at: last_synced_at.to_rfc3339(),
-                    },
-                );
-            }
-            Ok(other) => {
-                tracing::warn!(?other, "unexpected outcome from catalog sync");
-                let mapped = CommandError {
-                    code: "unexpected_sync_outcome".into(),
-                    message: "catalog sync returned a non-catalog outcome".into(),
-                };
-                emit_event(
-                    &app,
-                    CatalogSyncEvent::Failed {
-                        code: mapped.code,
-                        message: mapped.message,
-                    },
-                );
-            }
-            Err(e) => {
-                let mapped = map_sync_err(e);
-                emit_event(
-                    &app,
-                    CatalogSyncEvent::Failed {
-                        code: mapped.code,
-                        message: mapped.message,
-                    },
-                );
-            }
+            emit_event(
+                &app,
+                CatalogSyncEvent::Completed {
+                    fetched_at: fetched_at.to_rfc3339(),
+                    satellites_written,
+                    frequencies_written,
+                    tle_written,
+                    tle_deferred,
+                    tle_error,
+                },
+            );
+            Ok(())
         }
-    });
-    Ok(())
+        Ok(SyncOutcome::Skipped { last_synced_at, .. }) => {
+            emit_event(
+                &app,
+                CatalogSyncEvent::Skipped {
+                    last_synced_at: last_synced_at.to_rfc3339(),
+                },
+            );
+            Ok(())
+        }
+        Ok(other) => {
+            tracing::warn!(?other, "unexpected outcome from catalog sync");
+            let mapped = CommandError {
+                code: "unexpected_sync_outcome".into(),
+                message: "catalog sync returned a non-catalog outcome".into(),
+            };
+            emit_event(
+                &app,
+                CatalogSyncEvent::Failed {
+                    code: mapped.code.clone(),
+                    message: mapped.message.clone(),
+                },
+            );
+            Err(mapped)
+        }
+        Err(e) => {
+            let mapped = map_sync_err(e);
+            emit_event(
+                &app,
+                CatalogSyncEvent::Failed {
+                    code: mapped.code.clone(),
+                    message: mapped.message.clone(),
+                },
+            );
+            Err(mapped)
+        }
+    }
 }
 
 // --- Ground track ---------------------------------------------------------

@@ -3,13 +3,19 @@
 //! Pure function: input is the latest snapshot + `now`, output a risk label
 //! consistent with the NOAA G-scale plus a staleness flag. No external service calls.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::SpaceWeatherSnapshotRow;
 
 /// The snapshot is "Stale" once `now − observed_at` exceeds this threshold in minutes (canon §9.1).
 pub const STALE_THRESHOLD_MINUTES: i64 = 120;
+
+/// NOAA timestamps may lead the local clock slightly because of normal clock skew.
+/// Clamp up to five minutes to age zero; anything further ahead is unusable and
+/// must fail safe as `Unknown` + stale. Keep the calculations canon aligned with
+/// this named tolerance.
+pub const FUTURE_CLOCK_SKEW_TOLERANCE_MINUTES: i64 = 5;
 
 /// NOAA geomagnetic storm G-scale (canon §9.2). The UI label mirrors `level` exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,7 +59,7 @@ impl RiskLevel {
     /// Parses the NOAA G-scale. `noaa-scales.json` returns bare digits (`"0".."5"`)
     /// while the forecast/UI side uses `"G0".."G5"` — accept both.
     /// `None` if unrecognized.
-    fn from_g_scale(scale: &str) -> Option<RiskLevel> {
+    pub(super) fn from_g_scale(scale: &str) -> Option<RiskLevel> {
         let digit = scale.trim().to_ascii_uppercase();
         let digit = digit.strip_prefix('G').unwrap_or(&digit);
         match digit {
@@ -139,7 +145,11 @@ pub fn assess(snapshot: Option<&SpaceWeatherSnapshotRow>, now: DateTime<Utc>) ->
         }
     };
 
-    let age_minutes = (now - observed).num_minutes();
+    let age = now - observed;
+    if age < -Duration::minutes(FUTURE_CLOCK_SKEW_TOLERANCE_MINUTES) {
+        return SpaceWeatherRisk::unknown(snapshot.kp_index, Some(snapshot.observed_at.clone()));
+    }
+    let age_minutes = age.num_minutes().max(0);
     let stale = age_minutes > STALE_THRESHOLD_MINUTES;
 
     let (level, scale_source) = match snapshot
@@ -257,6 +267,27 @@ mod tests {
         assert_eq!(assess(Some(&fresh), now()).age_minutes, Some(119));
         assert!(assess(Some(&stale), now()).stale);
         assert_eq!(assess(Some(&stale), now()).age_minutes, Some(121));
+    }
+
+    #[test]
+    fn small_future_clock_skew_clamps_age_to_zero() {
+        let snap = snapshot("2026-05-28T12:05:00Z", Some(2.0), Some("G0"));
+        let risk = assess(Some(&snap), now());
+
+        assert_eq!(risk.level, RiskLevel::G0);
+        assert_eq!(risk.age_minutes, Some(0));
+        assert!(!risk.stale);
+    }
+
+    #[test]
+    fn future_timestamp_beyond_tolerance_is_unknown_and_stale() {
+        let snap = snapshot("2026-05-28T12:05:01Z", Some(2.0), Some("G0"));
+        let risk = assess(Some(&snap), now());
+
+        assert_eq!(risk.level, RiskLevel::Unknown);
+        assert_eq!(risk.scale_source, ScaleSource::None);
+        assert_eq!(risk.age_minutes, None);
+        assert!(risk.stale);
     }
 
     #[test]

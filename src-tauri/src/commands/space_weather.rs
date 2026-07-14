@@ -8,7 +8,8 @@
 
 use chrono::Utc;
 use serde::Serialize;
-use tauri::State;
+use std::sync::Arc;
+use tauri::{AppHandle, State};
 
 use super::location::CommandError;
 use crate::core::db::Database;
@@ -16,7 +17,7 @@ use crate::core::space_weather::{
     self,
     risk_model::{self, ScaleSource, SpaceWeatherRisk},
 };
-use crate::core::sync::{self, Dataset};
+use crate::core::sync::{self, Dataset, SyncCoordinator};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +34,10 @@ pub struct SpaceWeatherRiskDto {
     pub stale: bool,
     /// Timestamp of the last successful sync (RFC3339) — drives the UI "last updated" hint.
     pub last_synced_at: Option<String>,
+    /// Last automatic or manual network attempt, including failed attempts.
+    pub last_attempted_at: Option<String>,
+    /// Persisted diagnostic from the last failed attempt; cleared on success.
+    pub last_error: Option<String>,
 }
 
 fn scale_source_str(source: ScaleSource) -> &'static str {
@@ -43,7 +48,7 @@ fn scale_source_str(source: ScaleSource) -> &'static str {
     }
 }
 
-fn build_dto(risk: SpaceWeatherRisk, last_synced_at: Option<String>) -> SpaceWeatherRiskDto {
+fn build_dto(risk: SpaceWeatherRisk, status: sync::SyncStatus) -> SpaceWeatherRiskDto {
     SpaceWeatherRiskDto {
         level: risk.level.code().to_string(),
         label: risk.level.label().to_string(),
@@ -52,7 +57,9 @@ fn build_dto(risk: SpaceWeatherRisk, last_synced_at: Option<String>) -> SpaceWea
         observed_at: risk.observed_at,
         age_minutes: risk.age_minutes,
         stale: risk.stale,
-        last_synced_at,
+        last_synced_at: status.last_synced_at.map(|dt| dt.to_rfc3339()),
+        last_attempted_at: status.last_attempted_at.map(|dt| dt.to_rfc3339()),
+        last_error: status.last_error,
     }
 }
 
@@ -86,8 +93,8 @@ fn map_sync_err(e: sync::SyncError) -> CommandError {
 fn current_risk(db: &Database) -> Result<SpaceWeatherRiskDto, CommandError> {
     let snapshot = space_weather::repo::latest_snapshot(db).map_err(map_space_weather_err)?;
     let risk = risk_model::assess(snapshot.as_ref(), Utc::now());
-    let last = sync::last_synced_at(db, Dataset::SpaceWeather).map_err(map_sync_err)?;
-    Ok(build_dto(risk, last.map(|dt| dt.to_rfc3339())))
+    let status = sync::sync_status(db, Dataset::SpaceWeather).map_err(map_sync_err)?;
+    Ok(build_dto(risk, status))
 }
 
 /// Read-only: risk label + staleness from the latest snapshot (canon §9.2-9.3).
@@ -104,11 +111,23 @@ pub fn get_space_weather_risk(
 /// `force_sync`; automatic/startup syncs stay throttled via `sync_if_needed`.
 #[tauri::command]
 pub async fn sync_space_weather(
+    app: AppHandle,
     db: State<'_, Database>,
+    coordinator: State<'_, Arc<SyncCoordinator>>,
 ) -> Result<SpaceWeatherRiskDto, CommandError> {
     let db = db.inner().clone();
-    sync::force_sync(&db, Dataset::SpaceWeather)
-        .await
-        .map_err(map_sync_err)?;
+    crate::emit_data_refresh(&app, Dataset::SpaceWeather, "started", None);
+    if let Err(error) =
+        sync::force_sync(&db, coordinator.inner().as_ref(), Dataset::SpaceWeather).await
+    {
+        crate::emit_data_refresh(
+            &app,
+            Dataset::SpaceWeather,
+            "failed",
+            Some(error.to_string()),
+        );
+        return Err(map_sync_err(error));
+    }
+    crate::emit_data_refresh(&app, Dataset::SpaceWeather, "completed", None);
     current_risk(&db)
 }

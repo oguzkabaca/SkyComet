@@ -19,6 +19,11 @@ import {
 } from '../lib/operationContext';
 import { PassScheduleChart, type SchedulePassRef } from '../viz/PassScheduleChart';
 import { PassDetailPanel } from './pass-planner/PassDetailPanel';
+import {
+  getPassPlannerCacheRevision,
+  readPassPlannerCache,
+  writePassPlannerCache,
+} from './passPlannerCache';
 import styles from './PassPlanner.module.css';
 
 /** The batch always computes the full canon window (§5.1/§5.9); the view
@@ -26,8 +31,6 @@ import styles from './PassPlanner.module.css';
 const FETCH_HOURS = 24;
 /** §5.1 `schedule_min_max_el` — the "All" quality preset floor. */
 const FETCH_FLOOR_DEG = 10;
-/** Re-entering the screen inside this window reuses the cached schedule. */
-const CACHE_TTL_MS = 10 * 60_000;
 /** Row/axis re-evaluation cadence — ended passes fall off, "Now" stays left. */
 const NOW_TICK_MS = 60_000;
 
@@ -53,10 +56,6 @@ const QUALITY_OPTIONS: { value: QualityChoice; label: string }[] = [
   { value: 'good', label: 'Good+' },
   { value: 'overhead', label: 'Overhead' },
 ];
-
-/** Module-level cache — the batch (amateur-only by default, §7.6) takes seconds and must not
- * re-run on every navigation to this screen. */
-let scheduleCache: { schedule: SatelliteSchedule[]; fetchedAtMs: number } | null = null;
 
 function isCommandError(value: unknown): value is CommandError {
   return typeof value === 'object' && value !== null && 'code' in value && 'message' in value;
@@ -84,14 +83,15 @@ interface Props {
 }
 
 export function PassPlanner({ onOpenOperation }: Props) {
+  const [initialCache] = useState(() => readPassPlannerCache());
   const [view, setView] = useState<ViewChoice>('6');
   const [quality, setQuality] = useState<QualityChoice>('good');
   const [query, setQuery] = useState('');
   const [stationReady, setStationReady] = useState(true);
   const [schedule, setSchedule] = useState<SatelliteSchedule[] | null>(
-    () => scheduleCache?.schedule ?? null,
+    () => initialCache?.schedule ?? null,
   );
-  const [fetchedAtMs, setFetchedAtMs] = useState(() => scheduleCache?.fetchedAtMs ?? 0);
+  const [fetchedAtMs, setFetchedAtMs] = useState(() => initialCache?.fetchedAtMs ?? 0);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +102,10 @@ export function PassPlanner({ onOpenOperation }: Props) {
   const requestSeq = useRef(0);
 
   const load = useCallback(async (force: boolean) => {
-    if (!force && scheduleCache && Date.now() - scheduleCache.fetchedAtMs < CACHE_TTL_MS) {
+    if (!force && readPassPlannerCache() !== null) {
       return;
     }
+    const cacheRevision = getPassPlannerCacheRevision();
     const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
@@ -112,7 +113,7 @@ export function PassPlanner({ onOpenOperation }: Props) {
     try {
       const result = await listAllPasses(FETCH_HOURS, undefined, FETCH_FLOOR_DEG);
       if (seq !== requestSeq.current) return;
-      scheduleCache = { schedule: result, fetchedAtMs: startMs };
+      if (!writePassPlannerCache(result, startMs, cacheRevision)) return;
       setSchedule(result);
       setFetchedAtMs(startMs);
       setNowMs(Date.now());

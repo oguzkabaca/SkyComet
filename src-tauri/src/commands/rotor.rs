@@ -51,6 +51,17 @@ fn feasibility_str(f: FeasibilityClass) -> &'static str {
     }
 }
 
+/// Stale space weather must not influence an operator score as though it were
+/// current. Preserve the last reported code for display, but score it using the
+/// model's fail-safe `Unknown` weight.
+fn space_weather_level_for_score(risk: &risk_model::SpaceWeatherRisk) -> risk_model::RiskLevel {
+    if risk.stale {
+        risk_model::RiskLevel::Unknown
+    } else {
+        risk.level
+    }
+}
+
 fn parse_rfc3339(s: &str, field: &str) -> Result<DateTime<Utc>, CommandError> {
     DateTime::parse_from_rfc3339(s)
         .map(|dt| dt.with_timezone(&Utc))
@@ -121,6 +132,8 @@ pub struct OperatorBriefDto {
     /// `None` when no downlink frequency was supplied (margin not assessed).
     pub margin_db: Option<f64>,
     pub off_axis_loss_db: f64,
+    /// Whether the displayed risk code is stale and was scored as `Unknown`.
+    pub space_weather_stale: bool,
     pub risk_code: String,
     pub rotor_name: String,
     /// §8.7 fail-safe gate: TLE older than `TLE_EXPIRED_HOURS` → score forced to 0.
@@ -287,7 +300,7 @@ pub fn get_operator_brief(
         max_el_deg: pass.max_elevation_deg,
         margin_db: margin_db.unwrap_or(0.0),
         offaxis_loss_db: off_axis_loss_db,
-        risk: risk.level,
+        risk: space_weather_level_for_score(&risk),
         feasibility: feas,
         tle_expired,
     });
@@ -304,8 +317,60 @@ pub fn get_operator_brief(
         preposition_sec: prep,
         margin_db,
         off_axis_loss_db,
+        space_weather_stale: risk.stale,
         risk_code: risk.level.code().to_string(),
         rotor_name: rotor.name,
         tle_expired,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::space_weather::risk_model::{RiskLevel, ScaleSource, SpaceWeatherRisk};
+
+    fn weather_risk(level: RiskLevel, stale: bool) -> SpaceWeatherRisk {
+        SpaceWeatherRisk {
+            level,
+            scale_source: ScaleSource::Noaa,
+            kp_index: Some(2.0),
+            observed_at: Some("2026-05-28T12:00:00Z".to_string()),
+            age_minutes: Some(if stale { 121 } else { 1 }),
+            stale,
+        }
+    }
+
+    #[test]
+    fn stale_space_weather_is_unknown_for_brief_scoring() {
+        let stale_g0 = weather_risk(RiskLevel::G0, true);
+        assert_eq!(space_weather_level_for_score(&stale_g0), RiskLevel::Unknown);
+
+        let fresh_g0 = weather_risk(RiskLevel::G0, false);
+        assert_eq!(space_weather_level_for_score(&fresh_g0), RiskLevel::G0);
+    }
+
+    #[test]
+    fn operator_brief_dto_serializes_space_weather_staleness() {
+        let dto = OperatorBriefDto {
+            norad_id: 25_544,
+            aos: "2026-05-28T12:00:00Z".to_string(),
+            tca: "2026-05-28T12:05:00Z".to_string(),
+            los: "2026-05-28T12:10:00Z".to_string(),
+            max_elevation_deg: 45.0,
+            score: 50.0,
+            feasibility: "ok".to_string(),
+            flip_recommended: false,
+            preposition_sec: 30.0,
+            margin_db: Some(6.0),
+            off_axis_loss_db: 0.0,
+            space_weather_stale: true,
+            risk_code: "G0".to_string(),
+            rotor_name: "Test rotor".to_string(),
+            tle_expired: false,
+        };
+
+        let value = serde_json::to_value(dto).unwrap();
+        assert_eq!(value["spaceWeatherStale"], true);
+        assert_eq!(value["riskCode"], "G0");
+    }
 }

@@ -72,6 +72,7 @@ const _: () = {
     );
 };
 
+#[derive(Debug)]
 pub struct FetchOutcome {
     pub records: Vec<TleRecord>,
     pub skipped: Vec<TleError>,
@@ -117,7 +118,31 @@ pub async fn fetch_url(url: &str) -> Result<FetchOutcome, TleError> {
         )));
     }
 
-    let parsed = parse_three_line_set(&body);
+    normalize_response_body(&body)
+}
+
+/// Convert a successful HTTP response body into validated TLE records.
+///
+/// CelesTrak and intermediaries can return a human-readable error page with
+/// HTTP 200. Treat an empty body, HTML, or a body with no valid elset as an
+/// error so callers can never advance a sync timestamp for zero usable data.
+fn normalize_response_body(body: &str) -> Result<FetchOutcome, TleError> {
+    let normalized = body.trim_start_matches('\u{feff}');
+    let trimmed = normalized.trim();
+    if trimmed.is_empty() {
+        return Err(TleError::InvalidCelestrakData(
+            "response body is empty".to_string(),
+        ));
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("<!doctype html") || lower.contains("<html") {
+        return Err(TleError::InvalidCelestrakData(
+            "response body is HTML, not TLE data".to_string(),
+        ));
+    }
+
+    let parsed = parse_three_line_set(normalized);
     let mut records = Vec::with_capacity(parsed.len());
     let mut skipped = Vec::new();
     for result in parsed {
@@ -126,12 +151,31 @@ pub async fn fetch_url(url: &str) -> Result<FetchOutcome, TleError> {
             Err(e) => skipped.push(e),
         }
     }
+
+    if records.is_empty() {
+        let message = if skipped.is_empty() {
+            "response contains no complete TLE records".to_string()
+        } else {
+            format!(
+                "response contains no valid TLE records ({} rejected)",
+                skipped.len()
+            )
+        };
+        return Err(TleError::InvalidCelestrakData(message));
+    }
+
     Ok(FetchOutcome { records, skipped })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ISS_NAME: &str = "ISS (ZARYA)";
+    const ISS_L1: &str = "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9997";
+    const ISS_L2: &str = "2 25544  51.6400 247.4627 0006703 130.5360 325.0288 15.50000000123458";
+    const ISS_L2_BAD_CHECKSUM: &str =
+        "2 25544  51.6400 247.4627 0006703 130.5360 325.0288 15.50000000123450";
 
     #[test]
     fn group_query_strings() {
@@ -153,6 +197,42 @@ mod tests {
     #[test]
     fn amateur_group_is_synced_last() {
         assert_eq!(CelestrakGroup::ALL.last(), Some(&CelestrakGroup::Amateur));
+    }
+
+    #[test]
+    fn empty_success_body_is_rejected() {
+        let error = normalize_response_body(" \r\n\t").unwrap_err();
+        assert!(matches!(error, TleError::InvalidCelestrakData(_)));
+    }
+
+    #[test]
+    fn html_success_body_is_rejected_even_if_it_embeds_tle_text() {
+        let body = format!(
+            "<!doctype html><html><body>blocked</body></html>\n{ISS_NAME}\n{ISS_L1}\n{ISS_L2}"
+        );
+        let error = normalize_response_body(&body).unwrap_err();
+        assert!(matches!(error, TleError::InvalidCelestrakData(_)));
+    }
+
+    #[test]
+    fn body_with_zero_valid_tles_is_rejected() {
+        let body = format!("{ISS_NAME}\n{ISS_L1}\n{ISS_L2_BAD_CHECKSUM}\n");
+        let error = normalize_response_body(&body).unwrap_err();
+        assert!(matches!(error, TleError::InvalidCelestrakData(_)));
+
+        let error = normalize_response_body("GP data has not updated since your last download")
+            .unwrap_err();
+        assert!(matches!(error, TleError::InvalidCelestrakData(_)));
+    }
+
+    #[test]
+    fn valid_records_survive_alongside_rejected_records() {
+        let body = format!(
+            "\u{feff}{ISS_NAME}\n{ISS_L1}\n{ISS_L2}\n{ISS_NAME}\n{ISS_L1}\n{ISS_L2_BAD_CHECKSUM}\n"
+        );
+        let outcome = normalize_response_body(&body).unwrap();
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.skipped.len(), 1);
     }
 
     #[tokio::test]

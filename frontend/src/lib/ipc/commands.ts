@@ -233,6 +233,9 @@ export interface CatalogSyncStatus {
   lastSyncedAt: string | null;
   isStale: boolean;
   staleAfterDays: number;
+  tleLastSyncedAt?: string | null;
+  tleLastAttemptedAt?: string | null;
+  tleLastError?: string | null;
 }
 
 export type CatalogSyncEvent =
@@ -243,6 +246,8 @@ export type CatalogSyncEvent =
       satellitesWritten: number;
       frequenciesWritten: number;
       tleWritten: number;
+      tleDeferred: boolean;
+      tleError: string | null;
     }
   | { phase: 'skipped'; lastSyncedAt: string }
   | { phase: 'failed'; code: string; message: string };
@@ -470,13 +475,15 @@ export interface SpaceWeatherRisk {
   ageMinutes: number | null;
   stale: boolean;
   lastSyncedAt: string | null;
+  lastAttemptedAt: string | null;
+  lastError: string | null;
 }
 
 export async function getSpaceWeatherRisk(): Promise<SpaceWeatherRisk> {
   return invoke<SpaceWeatherRisk>('get_space_weather_risk');
 }
 
-/** Triggers a manual NOAA SWPC sync (skips if fresh) and returns the refreshed risk. */
+/** Forces a manual NOAA SWPC sync and returns the refreshed risk. */
 export async function syncSpaceWeather(): Promise<SpaceWeatherRisk> {
   return invoke<SpaceWeatherRisk>('sync_space_weather');
 }
@@ -504,6 +511,8 @@ export interface OperatorBrief {
   prepositionSec: number;
   marginDb: number | null;
   offAxisLossDb: number;
+  /** True when the last reported risk was scored as Unknown because it is stale. */
+  spaceWeatherStale: boolean;
   riskCode: SpaceWeatherLevel;
   rotorName: string;
   /** Canon §8.7 fail-safe: TLE older than 7 days — score is forced to 0. */

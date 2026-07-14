@@ -4,7 +4,9 @@ use std::time::Duration;
 use chrono::{Duration as ChronoDuration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::Deserialize;
 
-use super::{SpaceWeatherError, SpaceWeatherForecastInput, SpaceWeatherSnapshotInput};
+use super::{
+    risk_model::RiskLevel, SpaceWeatherError, SpaceWeatherForecastInput, SpaceWeatherSnapshotInput,
+};
 
 const PLANETARY_K_URL: &str = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json";
 const NOAA_SCALES_URL: &str = "https://services.swpc.noaa.gov/products/noaa-scales.json";
@@ -90,6 +92,20 @@ fn parse_noaa_payloads(
             .max_by(|a, b| a.observed_at.cmp(&b.observed_at))
             .and_then(|s| s.kp_index);
         snapshots.push(current_snapshot(current, latest_kp, &fetched_at)?);
+    }
+
+    let has_usable_snapshot = snapshots.iter().any(|snapshot| {
+        snapshot.kp_index.is_some()
+            || snapshot
+                .geomagnetic_scale
+                .as_deref()
+                .and_then(RiskLevel::from_g_scale)
+                .is_some()
+    });
+    if !has_usable_snapshot {
+        return Err(SpaceWeatherError::Parse(
+            "NOAA payloads contained no usable Kp or geomagnetic-scale snapshot".to_string(),
+        ));
     }
 
     let issued_at = scales
@@ -303,6 +319,29 @@ mod tests {
     }
 
     #[test]
+    fn empty_payloads_are_rejected_instead_of_marking_sync_successful() {
+        let err = parse_noaa_payloads(
+            Vec::new(),
+            HashMap::new(),
+            "2026-05-28T09:05:00Z".to_string(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, SpaceWeatherError::Parse(message) if message.contains("no usable")));
+    }
+
+    #[test]
+    fn planetary_rows_without_kp_are_not_usable_snapshots() {
+        let raw = parse_planetary(
+            r#"[{"time_tag":"2026-05-28T09:00:00","Kp":null,"a_running":12,"station_count":8}]"#,
+        );
+        let err = parse_noaa_payloads(raw, HashMap::new(), "2026-05-28T09:05:00Z".to_string())
+            .unwrap_err();
+
+        assert!(matches!(err, SpaceWeatherError::Parse(message) if message.contains("no usable")));
+    }
+
+    #[test]
     fn scales_current_and_forecasts_normalize() {
         let scales = parse_scales(
             r#"{
@@ -350,13 +389,15 @@ mod tests {
 
     #[test]
     fn scale_issue_time_falls_back_to_fetched_at_when_current_missing() {
+        let raw = parse_planetary(
+            r#"[{"time_tag":"2026-05-28T12:00:00","Kp":2.0,"a_running":7,"station_count":8}]"#,
+        );
         let scales = parse_scales(
             r#"{
                 "1":{"DateStamp":"2026-05-29","TimeStamp":"00:00 UTC","R":{"Scale":"0","Text":"None"},"S":{"Scale":"0","Text":"None"},"G":{"Scale":"1","Text":"Minor"}}
             }"#,
         );
-        let fetch =
-            parse_noaa_payloads(Vec::new(), scales, "2026-05-28T12:35:00Z".to_string()).unwrap();
+        let fetch = parse_noaa_payloads(raw, scales, "2026-05-28T12:35:00Z".to_string()).unwrap();
 
         assert_eq!(fetch.forecasts[0].issued_at, "2026-05-28T12:35:00Z");
         assert_eq!(fetch.forecasts[0].risk_level, "G1");

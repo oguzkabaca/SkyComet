@@ -44,4 +44,6 @@ pub enum TleError {
     Storage(#[from] DbError),
     #[error("network error: {0}")]
     Network(String),
+    #[error("invalid CelesTrak data: {0}")]
+    InvalidCelestrakData(String),
 }

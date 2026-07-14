@@ -25,6 +25,8 @@ const CATALOG_SNAPSHOT_FILE: &str = "catalog-snapshot.json";
 const SPLASH_WINDOW_LABEL: &str = "splash";
 const MAIN_WINDOW_LABEL: &str = "main";
 const STARTUP_STATUS_EVENT: &str = "startup_status";
+const DATA_REFRESH_EVENT: &str = "data_refresh";
+const AUTO_REFRESH_CHECK_INTERVAL: Duration = Duration::from_secs(15 * 60);
 // The splash is created hidden and shown from `begin_startup` once its themed
 // HTML has reached the compositor. If the frontend never runs (broken bundle),
 // this fallback reveals the splash anyway so the process is never windowless.
@@ -116,6 +118,22 @@ impl Default for BootstrapGuard {
     }
 }
 
+struct DataRefreshGuard(AtomicBool);
+
+impl Default for DataRefreshGuard {
+    fn default() -> Self {
+        Self(AtomicBool::new(false))
+    }
+}
+
+impl DataRefreshGuard {
+    fn claim(&self) -> bool {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+}
+
 impl BootstrapGuard {
     fn claim(&self) -> bool {
         self.0
@@ -134,6 +152,39 @@ struct BootstrapResources {
     database: Database,
     tracking_state: TrackingState,
     tle_cache: Arc<TleCache>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DataRefreshEvent {
+    dataset: &'static str,
+    phase: &'static str,
+    timestamp: String,
+    message: Option<String>,
+}
+
+pub(crate) fn emit_data_refresh(
+    app: &tauri::AppHandle,
+    dataset: crate::core::sync::Dataset,
+    phase: &'static str,
+    message: Option<String>,
+) {
+    if let Err(error) = app.emit(
+        DATA_REFRESH_EVENT,
+        DataRefreshEvent {
+            dataset: dataset.event_name(),
+            phase,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            message,
+        },
+    ) {
+        tracing::warn!(
+            dataset = dataset.event_name(),
+            phase,
+            error = %error,
+            "data refresh event emit failed"
+        );
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -256,6 +307,11 @@ fn complete_startup(app: tauri::AppHandle) -> Result<(), String> {
     main.set_focus()
         .map_err(|error| format!("main window could not be focused: {error}"))?;
 
+    // The React shell has mounted and registered its revision listeners by
+    // this handoff. Starting refresh here prevents a fast provider response
+    // from racing ahead of frontend cache invalidation.
+    start_data_refresh_if_needed(&app);
+
     if let Some(splash) = app.get_webview_window(SPLASH_WINDOW_LABEL) {
         splash
             .close()
@@ -312,6 +368,9 @@ fn finish_bootstrap(app: &tauri::AppHandle, resources: BootstrapResources) {
     app.manage(database.clone());
     app.manage(tracking_state.clone());
     app.manage(Arc::clone(&tle_cache));
+    let sync_coordinator = Arc::new(crate::core::sync::SyncCoordinator::default());
+    app.manage(Arc::clone(&sync_coordinator));
+    app.manage(DataRefreshGuard::default());
     app.manage(commands::serial_rotor::RotorConnection::default());
     app.manage(commands::serial_rotor::AutoTrack::default());
 
@@ -327,15 +386,29 @@ fn finish_bootstrap(app: &tauri::AppHandle, resources: BootstrapResources) {
     }
     mark_startup_milestone(&MAIN_CREATED_MS);
 
-    tauri::async_runtime::spawn(refresh_tle_if_stale(
-        database.clone(),
-        Arc::clone(&tle_cache),
-    ));
     tauri::async_runtime::spawn(tracking_loop(
         app.clone(),
         database,
         tracking_state,
         tle_cache,
+    ));
+}
+
+fn start_data_refresh_if_needed(app: &tauri::AppHandle) {
+    if !app.state::<DataRefreshGuard>().claim() {
+        return;
+    }
+    let database = app.state::<Database>().inner().clone();
+    let tle_cache = Arc::clone(app.state::<Arc<TleCache>>().inner());
+    let coordinator = Arc::clone(
+        app.state::<Arc<crate::core::sync::SyncCoordinator>>()
+            .inner(),
+    );
+    tauri::async_runtime::spawn(data_refresh_loop(
+        app.clone(),
+        database,
+        tle_cache,
+        coordinator,
     ));
 }
 
@@ -385,15 +458,38 @@ fn emit_startup_status(app: &tauri::AppHandle, message: &str, fatal: bool) {
     }
 }
 
-/// Startup TLE refresh: fetch fresh elsets from CelesTrak when the last
-/// TLE sync (or the snapshot seed stamp) is older than
-/// `sync::TLE_MAX_AGE_HOURS` (calc §7.1 `tle_sync_max_age_hours`).
-/// Best-effort — offline startups keep tracking on the seeded elsets.
-async fn refresh_tle_if_stale(db: Database, cache: Arc<TleCache>) {
+/// Check both operational feeds immediately after startup and every 15 minutes.
+/// The dataset freshness stamp and two-hour retry backoff decide whether an
+/// actual provider request is allowed, so the loop itself is cheap offline and
+/// remains within CelesTrak's update cadence.
+async fn data_refresh_loop(
+    app: tauri::AppHandle,
+    db: Database,
+    cache: Arc<TleCache>,
+    coordinator: Arc<crate::core::sync::SyncCoordinator>,
+) {
+    let mut interval = tokio::time::interval(AUTO_REFRESH_CHECK_INTERVAL);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        interval.tick().await;
+        tokio::join!(
+            refresh_tle_if_stale(&app, &db, &cache, &coordinator),
+            refresh_space_weather_if_stale(&app, &db, &coordinator),
+        );
+    }
+}
+
+async fn refresh_tle_if_stale(
+    app: &tauri::AppHandle,
+    db: &Database,
+    cache: &TleCache,
+    coordinator: &crate::core::sync::SyncCoordinator,
+) {
     use crate::core::sync::{self, Dataset, SyncOutcome, TLE_MAX_AGE_HOURS};
 
+    emit_data_refresh(app, Dataset::Tle, "started", None);
     let max_age = chrono::Duration::hours(TLE_MAX_AGE_HOURS);
-    match sync::sync_if_needed(&db, Dataset::Tle, max_age).await {
+    match sync::sync_if_needed(db, coordinator, Dataset::Tle, max_age).await {
         Ok(SyncOutcome::TlePerformed {
             tle_written,
             tle_skipped,
@@ -402,16 +498,84 @@ async fn refresh_tle_if_stale(db: Database, cache: Arc<TleCache>) {
             // Cached propagators may hold the old elsets; drop everything,
             // the lazy reload picks up the fresh rows (knowledge/db.md rule).
             cache.invalidate_all();
-            tracing::info!(tle_written, tle_skipped, "startup TLE refresh complete");
+            tracing::info!(tle_written, tle_skipped, "automatic TLE refresh complete");
+            emit_data_refresh(app, Dataset::Tle, "completed", None);
         }
         Ok(SyncOutcome::Skipped { last_synced_at, .. }) => {
             tracing::debug!(last_synced_at = %last_synced_at, "TLE data fresh, refresh skipped");
+            emit_data_refresh(app, Dataset::Tle, "skipped", None);
+        }
+        Ok(SyncOutcome::Deferred {
+            last_attempted_at, ..
+        }) => {
+            tracing::debug!(last_attempted_at = %last_attempted_at, "TLE retry deferred");
+            emit_data_refresh(app, Dataset::Tle, "deferred", None);
         }
         Ok(other) => {
             tracing::warn!(?other, "unexpected outcome from TLE refresh");
+            emit_data_refresh(
+                app,
+                Dataset::Tle,
+                "failed",
+                Some("unexpected TLE sync outcome".to_owned()),
+            );
         }
         Err(e) => {
-            tracing::warn!(error = %e, "startup TLE refresh failed; tracking continues on stored elsets");
+            tracing::warn!(error = %e, "automatic TLE refresh failed; tracking continues on stored elsets");
+            emit_data_refresh(app, Dataset::Tle, "failed", Some(e.to_string()));
+        }
+    }
+}
+
+async fn refresh_space_weather_if_stale(
+    app: &tauri::AppHandle,
+    db: &Database,
+    coordinator: &crate::core::sync::SyncCoordinator,
+) {
+    use crate::core::sync::{self, Dataset, SyncOutcome, SPACE_WEATHER_MAX_AGE_HOURS};
+
+    emit_data_refresh(app, Dataset::SpaceWeather, "started", None);
+    let max_age = chrono::Duration::hours(SPACE_WEATHER_MAX_AGE_HOURS);
+    match sync::sync_if_needed(db, coordinator, Dataset::SpaceWeather, max_age).await {
+        Ok(SyncOutcome::SpaceWeatherPerformed {
+            snapshots_written,
+            forecasts_written,
+            ..
+        }) => {
+            tracing::info!(
+                snapshots_written,
+                forecasts_written,
+                "automatic space-weather refresh complete"
+            );
+            emit_data_refresh(app, Dataset::SpaceWeather, "completed", None);
+        }
+        Ok(SyncOutcome::Skipped { last_synced_at, .. }) => {
+            tracing::debug!(last_synced_at = %last_synced_at, "space-weather data fresh, refresh skipped");
+            emit_data_refresh(app, Dataset::SpaceWeather, "skipped", None);
+        }
+        Ok(SyncOutcome::Deferred {
+            last_attempted_at, ..
+        }) => {
+            tracing::debug!(last_attempted_at = %last_attempted_at, "space-weather retry deferred");
+            emit_data_refresh(app, Dataset::SpaceWeather, "deferred", None);
+        }
+        Ok(other) => {
+            tracing::warn!(?other, "unexpected outcome from space-weather refresh");
+            emit_data_refresh(
+                app,
+                Dataset::SpaceWeather,
+                "failed",
+                Some("unexpected space-weather sync outcome".to_owned()),
+            );
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "automatic space-weather refresh failed; stored risk remains available");
+            emit_data_refresh(
+                app,
+                Dataset::SpaceWeather,
+                "failed",
+                Some(error.to_string()),
+            );
         }
     }
 }
@@ -568,13 +732,20 @@ fn init_tracing() {
 
 #[cfg(test)]
 mod startup_tests {
-    use super::{mark_startup_milestone, BootstrapGuard, PROCESS_START};
+    use super::{mark_startup_milestone, BootstrapGuard, DataRefreshGuard, PROCESS_START};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Instant;
 
     #[test]
     fn bootstrap_can_only_be_claimed_once() {
         let guard = BootstrapGuard::default();
+        assert!(guard.claim());
+        assert!(!guard.claim());
+    }
+
+    #[test]
+    fn data_refresh_loop_can_only_be_started_once() {
+        let guard = DataRefreshGuard::default();
         assert!(guard.claim());
         assert!(!guard.claim());
     }

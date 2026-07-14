@@ -21,8 +21,14 @@ use super::{TleError, TleRecord};
 use crate::core::db::Database;
 
 #[derive(Debug, Default)]
+struct CacheState {
+    generation: u64,
+    records: HashMap<u32, TleRecord>,
+}
+
+#[derive(Debug, Default)]
 pub struct TleCache {
-    inner: RwLock<HashMap<u32, TleRecord>>,
+    inner: RwLock<CacheState>,
 }
 
 impl TleCache {
@@ -33,42 +39,59 @@ impl TleCache {
     /// Return the cached record for `norad`, loading from DB on miss.
     /// Returns `Ok(None)` when the satellite has no TLE in the DB.
     pub fn get_or_load(&self, db: &Database, norad: u32) -> Result<Option<TleRecord>, TleError> {
-        if let Some(rec) = self.read_hit(norad) {
-            return Ok(Some(rec));
-        }
-        let loaded = repo::get_by_norad(db, norad)?;
-        if let Some(rec) = &loaded {
-            if let Ok(mut guard) = self.inner.write() {
-                guard.insert(norad, rec.clone());
+        let observed_generation = match self.inner.read() {
+            Ok(state) => {
+                if let Some(record) = state.records.get(&norad) {
+                    return Ok(Some(record.clone()));
+                }
+                Some(state.generation)
             }
+            Err(_) => None,
+        };
+
+        let loaded = repo::get_by_norad(db, norad)?;
+        if let (Some(record), Some(generation)) = (&loaded, observed_generation) {
+            self.insert_if_current(norad, record, generation);
         }
         Ok(loaded)
     }
 
     /// Remove a single entry. Call after upsert/delete of that NORAD.
     pub fn invalidate(&self, norad: u32) {
-        if let Ok(mut guard) = self.inner.write() {
-            guard.remove(&norad);
+        if let Ok(mut state) = self.inner.write() {
+            state.generation = state.generation.wrapping_add(1);
+            state.records.remove(&norad);
         }
     }
 
     /// Drop all entries. Use after bulk upserts (e.g., catalog sync).
     pub fn invalidate_all(&self) {
-        if let Ok(mut guard) = self.inner.write() {
-            guard.clear();
+        if let Ok(mut state) = self.inner.write() {
+            state.generation = state.generation.wrapping_add(1);
+            state.records.clear();
         }
     }
 
     pub fn len(&self) -> usize {
-        self.inner.read().map(|g| g.len()).unwrap_or(0)
+        self.inner
+            .read()
+            .map(|state| state.records.len())
+            .unwrap_or(0)
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    fn read_hit(&self, norad: u32) -> Option<TleRecord> {
-        self.inner.read().ok()?.get(&norad).cloned()
+    fn insert_if_current(&self, norad: u32, record: &TleRecord, observed_generation: u64) -> bool {
+        let Ok(mut state) = self.inner.write() else {
+            return false;
+        };
+        if state.generation != observed_generation {
+            return false;
+        }
+        state.records.insert(norad, record.clone());
+        true
     }
 }
 
@@ -134,6 +157,41 @@ mod tests {
 
         cache.invalidate_all();
         assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn stale_load_cannot_repopulate_cache_after_invalidation() {
+        use chrono::Duration;
+
+        let db = seeded_db();
+        let cache = TleCache::new();
+        let observed_generation = cache.inner.read().unwrap().generation;
+        let stale = repo::get_by_norad(&db, 25544).unwrap().unwrap();
+
+        let mut newer = stale.clone();
+        newer.name = "ISS (UPDATED)".to_string();
+        newer.epoch += Duration::hours(1);
+        repo::upsert(&db, &newer, "test").unwrap();
+        cache.invalidate_all();
+
+        assert!(!cache.insert_if_current(25544, &stale, observed_generation));
+        assert!(cache.is_empty());
+
+        let loaded = cache.get_or_load(&db, 25544).unwrap().unwrap();
+        assert_eq!(loaded.name, "ISS (UPDATED)");
+        assert_eq!(loaded.epoch, newer.epoch);
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn invalidating_a_missing_entry_still_advances_generation() {
+        let cache = TleCache::new();
+        let before = cache.inner.read().unwrap().generation;
+
+        cache.invalidate(99999);
+
+        let after = cache.inner.read().unwrap().generation;
+        assert_eq!(after, before.wrapping_add(1));
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::core::db::Database;
 use crate::core::location::detect::{self, DetectError, DetectedLocation};
@@ -56,6 +56,7 @@ pub fn get_location(db: State<'_, Database>) -> Result<Option<Location>, Command
 
 #[tauri::command]
 pub fn set_location(
+    app: AppHandle,
     db: State<'_, Database>,
     latitude_deg: f64,
     longitude_deg: f64,
@@ -63,6 +64,9 @@ pub fn set_location(
 ) -> Result<Location, CommandError> {
     let loc = Location::new(latitude_deg, longitude_deg, altitude_m)?;
     location::save_location(db.inner(), &loc)?;
+    if let Err(error) = app.emit("location_changed", &loc) {
+        tracing::warn!(error = %error, "location change event emit failed");
+    }
     Ok(loc)
 }
 
